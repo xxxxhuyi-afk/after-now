@@ -1,0 +1,130 @@
+.cursorDot,
+.cursorRing {
+  position: fixed;
+  z-index: 120;
+  top: 0;
+  left: 0;
+  display: none;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.cursorDot {
+  width: 14px;
+  height: 16px;
+  border-radius: 48% 48% 58% 58%;
+  background: radial-gradient(circle at 42% 34%, #fffde1 0 12%, #eaff91 31%, #b3d73b 72%, #738b1d 100%);
+  box-shadow:
+    0 0 0.75rem rgb(244 255 196 / 92%),
+    0 0 2.4rem rgb(217 255 82 / 66%);
+}
+
+.cursorDot::before,
+.cursorDot::after {
+  position: absolute;
+  top: -5px;
+  left: 3px;
+  width: 8px;
+  height: 6px;
+  border-radius: 3px 3px 1px 1px;
+  background: #252722;
+  content: "";
+}
+
+.cursorDot::after {
+  z-index: -1;
+  top: 11px;
+  left: -32px;
+  width: 78px;
+  height: 100px;
+  border-radius: 0;
+  background: linear-gradient(to bottom, rgb(234 255 155 / 20%), transparent 82%);
+  clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
+  filter: blur(7px);
+}
+
+.cursorRing {
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgb(217 255 82 / 26%);
+  border-radius: 50%;
+  box-shadow: inset 0 0 1rem rgb(217 255 82 / 7%);
+}
+
+.wandString {
+  position: fixed;
+  z-index: 118;
+  inset: 0;
+  display: none;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.wandString path {
+  fill: none;
+  stroke: rgb(153 158 145 / 42%);
+  stroke-linecap: round;
+  stroke-width: 1.15;
+  animation: cableDrop 1.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  stroke-dasharray: 1800;
+  stroke-dashoffset: 0;
+}
+
+@keyframes cableDrop {
+  from { opacity: 0; stroke-dashoffset: 1800; }
+  to { opacity: 1; stroke-dashoffset: 0; }
+}
+
+.progress {
+  position: fixed;
+  z-index: 45;
+  top: 50%;
+  right: 1.15rem;
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  color: rgb(233 230 220 / 38%);
+  font-family: "Courier New", monospace;
+  font-size: 0.46rem;
+  letter-spacing: 0.08em;
+  transform: translateY(-50%);
+}
+
+.progress > span {
+  writing-mode: vertical-rl;
+}
+
+.progress i {
+  position: relative;
+  display: block;
+  width: 1px;
+  height: 5.4rem;
+  overflow: hidden;
+  background: rgb(233 230 220 / 16%);
+}
+
+.progress b {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--acid);
+  transform: scaleY(0);
+  transform-origin: top;
+  will-change: transform;
+}
+
+@media (pointer: fine) {
+  :global(html[data-pointer="fine"]) .cursorDot,
+  :global(html[data-pointer="fine"]) .cursorRing,
+  :global(html[data-pointer="fine"]) .wandString {
+    display: block;
+  }
+}
+
+@media (max-width: 700px) {
+  .progress {
+    display: none;
+  }
+}

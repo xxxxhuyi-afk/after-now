@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #080908;
+  --bone: #e9e6dc;
+  --paper: #d9d6cc;
+  --blue: #4e63ff;
+  --acid: #d9ff52;
+  --pointer-x: 0px;
+  --pointer-y: 0px;
+  --pointer-lab-x: 0px;
+  --pointer-lab-y: 0px;
+  --cat-eye-x: 0px;
+  --cat-eye-y: 0px;
+  --cat-head-x: 0px;
+  --cat-head-y: 0px;
+  --cat-head-rotate: 0deg;
+  --cat-image-x: 0px;
+  --cat-image-y: 0px;
+  --cat-image-rotate: 0deg;
+  --scroll-shift: 0px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--ink);
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: Arial, Helvetica, "PingFang SC", "Microsoft YaHei", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+body,
+button,
+a {
+  cursor: default;
+}
+
+@media (pointer: fine) {
+  html[data-pointer="fine"],
+  html[data-pointer="fine"] body,
+  html[data-pointer="fine"] a,
+  html[data-pointer="fine"] article {
+    cursor: none !important;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--acid);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
