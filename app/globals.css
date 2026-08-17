@@ -19,6 +19,9 @@
   --cat-image-y: 0px;
   --cat-image-rotate: 0deg;
   --scroll-shift: 0px;
+  --hero-title-scale: 1;
+  --hero-media-scale: 1.015;
+  --hero-fade: 1;
   color-scheme: dark;
 }
 
@@ -39,20 +42,8 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-body,
-button,
-a {
-  cursor: default;
-}
-
-@media (pointer: fine) {
-  html[data-pointer="fine"],
-  html[data-pointer="fine"] body,
-  html[data-pointer="fine"] a,
-  html[data-pointer="fine"] article {
-    cursor: none !important;
-  }
-}
+body { cursor: default; }
+a, button { cursor: pointer; }
 
 a {
   color: inherit;

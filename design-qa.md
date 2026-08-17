@@ -1,48 +1,44 @@
-# After Now Design QA
+# After Now — Integrated Design QA
 
 final result: passed
 
-## Source visual truth
+## Integrated surfaces
 
-- `C:\Users\Administrator\.codex\generated_images\019fc60f-705a-7a53-bb08-11033b1100f6\exec-5841d431-eaf7-4387-93e0-1a46cb02a9ab.png`
-- Copied into project as `design-reference-cyber-cat-hero.png` for handoff.
+- Hero: blue-beret character holding a black cat, full-screen editorial composition.
+- Project 03: red cyber visual cover opening into a full-screen local-video and image-carousel experience.
+- Lab: acid-green exhibition section with an interactive green showroom model.
+- Reading room and previously approved page sections remain integrated in the same single-page flow.
 
-## Implementation evidence
+## Evidence
 
-- Desktop screenshot: `implementation-cyber-cat-hero.png`
-- Mobile screenshot: `implementation-cyber-cat-mobile.png`
-- Side-by-side comparison: `design-qa-cyber-cat-comparison.png`
-- Desktop CSS viewport: 1360 × 1156
-- Source pixels: 1355 × 1161
-- Implementation capture pixels: 1345 × 1143
-- Comparison normalization: implementation resized to source pixel dimensions; browser chrome and scrollbar were kept as capture context and not treated as page content.
-- Mobile CSS viewport: 390 × 844
+- Hero implementation: `output/hero-black-cat-verified.png` (1265 × 712).
+- Project detail implementation: `output/project-03-modal-final.png` (1162 × 938).
+- Showroom implementation: `output/showroom-model-verified.png` (1265 × 712).
+- Hero source artwork: `public/after-now-girl-black-cat-hero.png` (1672 × 941).
+- Project 03 source cover: `public/project-03-cover.png`.
 
-## State tested
+## Visual comparison
 
-- Initial desktop hero, dark theme, top of page
-- Pointer moved to right and left positions
-- Scroll cue activated to `#manifesto`
-- Mobile hero at 390 × 844
-- Reduced-density capture was not used for visual judgment; the source and implementation were normalized before comparison.
+- The hero preserves the supplied 16:9 subject, black-cat silhouette, dark-blue negative space, and centered character crop.
+- Project 03 keeps the supplied red/black cyber visual language and converts it into a split-screen moving-image archive.
+- The former flat Lab placeholder is replaced by a green exhibition-room model while preserving the requested acid-green section identity.
+- Typography, spacing, contrast, image crops, and responsive framing were checked at the captured desktop viewports.
 
-## Findings
+## Interaction and runtime verification
 
-- Fonts and typography: the Chinese title, compact English wordmark, tagline, and navigation preserve the selected hierarchy. The English wordmark uses a local condensed display fallback and remains readable.
-- Spacing and layout rhythm: the left text column stays clear of the cat, the cat remains the dominant right-side subject, and the hero fits the desktop viewport without horizontal overflow.
-- Colors and visual tokens: near-black, ivory, cobalt-violet, acid-lime, and small orange accents remain consistent with the selected target.
-- Image quality and asset fidelity: the generated cybernetic black cat is used as a real raster asset, with no CSS or SVG substitute. Its crop and dark integration are intentional for the interactive hero.
-- Copy and content: the extra HUD copy was removed after review; only the header, Chinese title, Chinese sentence, `AWAKE`, `AFTER NOW`, and tagline remain.
+- Project 03 cover opens the full-screen detail view.
+- The local rooftop video starts automatically after entry, keeps sound available, exposes native controls, and loops.
+- The right-side archive contains six supplied images in a draggable/wheel-controlled cylinder carousel.
+- The detail view closes by its close control, backdrop click, or Escape.
+- The showroom canvas renders successfully; tabs and the light-level slider update the scene.
+- Browser development logs contained no runtime errors during the final inspection.
 
-## Interaction checks
+## Comparison history
 
-- Pointer state changed from `--cat-image-x: 5.47px` on the left to `--cat-image-x: -5.69px` on the right, with rotation changing from `-0.31deg` to `0.33deg`.
-- `AWAKE` opacity changes from the resting state to active tracking state.
-- `Scroll to explore` resolves to exactly one link and navigates to `#manifesto`.
-- Browser console warnings/errors: none captured.
-- Mobile horizontal overflow: 0px.
+- Initial Project 03 video reached its end and paused.
+- The video was updated to loop; post-fix inspection confirmed `paused: false`, `loop: true`, and audio unmuted.
 
 ## Follow-up polish
 
-- Replace the local fallback font with a hosted brand display font if a final typeface is selected.
-- Replace placeholder project imagery, contact details, and Lab product package when supplied.
+- P3 only: touch inertia and text sizing can be tuned further after testing on the final phone models.
+- GitHub deployment and Figma fine-tuning are intentionally left for the next confirmed step.

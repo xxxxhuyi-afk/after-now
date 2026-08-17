@@ -1,0 +1,296 @@
+.preview {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  color: #f4e9e5;
+  background: #160504;
+  cursor: pointer;
+  text-align: left;
+}
+
+.preview img {
+  object-fit: cover;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1), filter 900ms ease;
+}
+
+.previewShade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(0 0 0 / 18%), transparent 48%, rgb(0 0 0 / 52%));
+  pointer-events: none;
+}
+
+.previewTopline,
+.previewCta {
+  position: absolute;
+  z-index: 2;
+  font-family: "Courier New", monospace;
+  letter-spacing: 0.12em;
+}
+
+.previewTopline {
+  top: 1.2rem;
+  left: 1.3rem;
+  font-size: 0.56rem;
+}
+
+.previewCta {
+  right: 1.3rem;
+  bottom: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  font-size: 0.68rem;
+}
+
+.previewCta i {
+  display: grid;
+  width: 2.4rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 52%);
+  border-radius: 50%;
+  font-size: 1rem;
+  font-style: normal;
+  transition: 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.preview:hover img { transform: scale(1.035); filter: saturate(1.08) contrast(1.035); }
+.preview:hover .previewCta i { border-color: #ff3528; background: #ff3528; transform: rotate(45deg); }
+.preview:focus-visible { outline: 2px solid #ff3528; outline-offset: -2px; }
+
+.modal {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0.8rem;
+  color: #eeeae4;
+  background: rgb(0 0 0 / 86%);
+  backdrop-filter: blur(18px);
+  animation: modalIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modalShell {
+  width: min(98rem, 100%);
+  height: min(58rem, calc(100svh - 1.6rem));
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 16%);
+  background: #050505;
+  box-shadow: 0 2rem 8rem rgb(0 0 0 / 70%);
+}
+
+.modalHeader {
+  display: flex;
+  height: 4.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.35rem;
+  border-bottom: 1px solid rgb(255 255 255 / 14%);
+  font-family: "Courier New", monospace;
+}
+
+.modalHeader > div { display: flex; align-items: baseline; gap: 1.4rem; }
+.modalHeader span { color: rgb(255 255 255 / 48%); font-size: 0.58rem; letter-spacing: 0.13em; }
+.modalHeader strong { font-size: 0.72rem; font-weight: 400; letter-spacing: 0.14em; }
+
+.modalHeader button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.modalHeader button i {
+  display: grid;
+  width: 2.5rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 32%);
+  border-radius: 50%;
+  font-family: Arial, sans-serif;
+  font-size: 1.2rem;
+  font-style: normal;
+  transition: 240ms ease;
+}
+
+.modalHeader button:hover i { border-color: #ff3528; background: #ff3528; }
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(21rem, 0.8fr);
+  height: calc(100% - 4.5rem);
+}
+
+.filmPanel {
+  position: relative;
+  min-width: 0;
+  padding: 1rem;
+  border-right: 1px solid rgb(255 255 255 / 13%);
+  background: #000;
+}
+
+.film {
+  width: 100%;
+  height: calc(100% - 2.7rem);
+  border: 0;
+  background: #000;
+  object-fit: contain;
+}
+
+.filmMeta {
+  display: flex;
+  height: 2.7rem;
+  align-items: end;
+  justify-content: space-between;
+  color: rgb(255 255 255 / 52%);
+  font-family: "Courier New", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+}
+
+.filmMeta button {
+  padding: 0.42rem 0.7rem;
+  border: 1px solid rgb(255 255 255 / 26%);
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.carouselPanel {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  touch-action: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(121 0 0 / 24%), transparent 54%),
+    #070505;
+  cursor: grab;
+  perspective: 1150px;
+  user-select: none;
+}
+
+.carouselPanel:active { cursor: grabbing; }
+
+.carouselTopline {
+  position: absolute;
+  z-index: 300;
+  top: 1rem;
+  right: 1rem;
+  left: 1rem;
+  display: flex;
+  justify-content: space-between;
+  color: rgb(255 255 255 / 45%);
+  font-family: "Courier New", monospace;
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  pointer-events: none;
+}
+
+.carouselScene {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.sceneCard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(88%, 32rem);
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  color: inherit;
+  background: #0b0808;
+  box-shadow: 0 1.3rem 3.5rem rgb(0 0 0 / 62%);
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.sceneCard img {
+  position: absolute;
+  z-index: 3;
+  object-fit: cover;
+  backface-visibility: hidden;
+  transform: translateZ(3px);
+}
+
+.sceneCard::after {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  border: 1px solid rgb(255 255 255 / 19%);
+  content: "";
+  pointer-events: none;
+  transform: translateZ(3.5px);
+}
+
+.cardDepth,
+.cardDepthTwo {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(255 255 255 / 12%);
+  background: #3c3535;
+  transform: translateZ(1px);
+}
+
+.cardDepthTwo { background: #171313; transform: translateZ(-2px); }
+
+.carouselHint {
+  position: absolute;
+  z-index: 300;
+  right: 1rem;
+  bottom: 1rem;
+  margin: 0;
+  color: rgb(255 255 255 / 40%);
+  font-family: "Courier New", monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .modal { padding: 0; }
+  .modalShell { height: 100svh; border: 0; }
+  .modalHeader { height: 4rem; padding-inline: 1rem; }
+  .modalHeader > div { display: grid; gap: 0.2rem; }
+  .detailGrid { grid-template-columns: 1fr; grid-template-rows: minmax(14rem, 44%) minmax(0, 56%); height: calc(100% - 4rem); }
+  .filmPanel { padding: 0.7rem; border-right: 0; border-bottom: 1px solid rgb(255 255 255 / 13%); }
+  .film { height: calc(100% - 2.2rem); }
+  .filmMeta { height: 2.2rem; }
+  .sceneCard { width: min(82%, 29rem); }
+}
+
+@media (max-width: 560px) {
+  .previewTopline { top: 0.8rem; left: 0.8rem; }
+  .previewCta { right: 0.8rem; bottom: 0.8rem; }
+  .modalHeader strong { max-width: 13rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modalHeader button > span { display: none; }
+  .sceneCard { width: 88%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview img,
+  .previewCta i { transition: none; }
+}

@@ -1,0 +1,263 @@
+.showroom {
+  --glass: rgb(255 255 255 / 10%);
+  --line: rgb(255 255 255 / 16%);
+  position: relative;
+  min-height: clamp(42rem, 68vw, 61rem);
+  margin-top: clamp(4.5rem, 9vw, 9rem);
+  overflow: hidden;
+  border: 1px solid rgb(8 9 8 / 45%);
+  color: #f5f7ed;
+  background: #050805;
+  box-shadow: 0 2rem 6rem rgb(53 70 12 / 28%);
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas:active { cursor: grabbing; }
+
+.topLeft,
+.topRight,
+.stats,
+.rail,
+.hint { position: absolute; z-index: 2; }
+
+.topLeft { top: 1.5rem; left: 1.5rem; width: min(35rem, calc(100% - 31rem)); }
+
+.brandLine {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brandLine > button {
+  display: grid;
+  width: 2.35rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  color: inherit;
+  background: rgb(0 0 0 / 42%);
+  cursor: pointer;
+}
+
+.brandLine > span {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
+}
+
+.brandLine i {
+  display: block;
+  width: 0.72rem;
+  aspect-ratio: 1;
+  border: 1px solid #d9ff52;
+  border-radius: 50%;
+  box-shadow: 0 0 1.2rem rgb(217 255 82 / 85%);
+}
+
+.tabs {
+  display: flex;
+  width: fit-content;
+  margin: 1rem 0 1.7rem 3.35rem;
+  padding: 0.18rem;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 0.68rem;
+  background: rgb(0 0 0 / 24%);
+  backdrop-filter: blur(15px);
+}
+
+.tabs button {
+  height: 2.05rem;
+  padding: 0 0.9rem;
+  border: 0;
+  border-radius: 0.45rem;
+  color: rgb(255 255 255 / 65%);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.62rem;
+  transition: 180ms ease;
+}
+
+.tabs button:hover { color: #fff; }
+.tabs .activeTab { color: #071005; background: #d9ff52; }
+
+.liveInfo {
+  display: flex;
+  gap: 2rem;
+  margin: 0 0 0 3.35rem;
+}
+
+.liveInfo div { display: grid; gap: 0.3rem; }
+.liveInfo dt { color: rgb(255 255 255 / 48%); font-size: 0.6rem; }
+.liveInfo dd { margin: 0; font-size: 0.73rem; }
+
+.topRight {
+  top: 1.5rem;
+  right: 25.8rem;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  font-family: "Courier New", monospace;
+  font-size: 0.54rem;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.topRight button {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  color: inherit;
+  background: rgb(0 0 0 / 25%);
+  cursor: pointer;
+  font: inherit;
+  backdrop-filter: blur(14px);
+}
+
+.stats {
+  bottom: 1.4rem;
+  left: 1.5rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.stats span {
+  display: flex;
+  width: 5.5rem;
+  height: 2.45rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.58rem;
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(115%);
+  font-size: 0.58rem;
+}
+
+.stats i { color: #d9ff52; font-family: "Courier New", monospace; font-size: 0.67rem; font-style: normal; }
+
+.rail {
+  top: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  width: min(23rem, 30%);
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.glassCard {
+  padding: 1.25rem;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 10%);
+  box-shadow: 0 1.4rem 3.4rem rgb(0 0 0 / 38%);
+  backdrop-filter: blur(32px) saturate(115%);
+}
+
+.cardIndex,
+.cardTitleRow {
+  color: rgb(255 255 255 / 52%);
+  font-family: "Courier New", monospace;
+  font-size: 0.53rem;
+  letter-spacing: 0.1em;
+}
+
+.glassCard h3 {
+  margin: 2.4rem 0 1rem;
+  font-size: clamp(1.55rem, 2.4vw, 2.6rem);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.glassCard > p { max-width: 24rem; margin: 0; color: rgb(255 255 255 / 58%); font-size: 0.68rem; line-height: 1.55; }
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(255 255 255 / 13%);
+}
+
+.metrics span { display: grid; gap: 0.32rem; color: rgb(255 255 255 / 48%); font-size: 0.48rem; }
+.metrics strong { color: #fff; font-size: 1rem; font-weight: 400; }
+
+.controlCard { flex: 0 0 auto; }
+.cardTitleRow { display: flex; justify-content: space-between; }
+.controlCard label { display: block; margin: 1.7rem 0 1rem; color: rgb(255 255 255 / 58%); font-size: 0.65rem; }
+
+.controlCard input {
+  width: 100%;
+  height: 0.28rem;
+  border-radius: 999px;
+  accent-color: #d9ff52;
+  cursor: grab;
+}
+
+.controlValues { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 1.25rem; }
+.controlValues span { display: grid; gap: 0.35rem; color: rgb(255 255 255 / 43%); font-size: 0.5rem; }
+.controlValues strong { color: #fff; font-size: 0.74rem; font-weight: 400; }
+
+.noteCard { flex: 1; min-height: 0; }
+.noteCard ol { display: grid; gap: 0; margin: 1rem 0 0; padding: 0; list-style: none; }
+.noteCard li { display: grid; grid-template-columns: 2rem 1fr; align-items: center; min-height: 3.2rem; border-top: 1px solid rgb(255 255 255 / 12%); color: rgb(255 255 255 / 70%); font-size: 0.62rem; }
+.noteCard li span { color: #d9ff52; font-family: "Courier New", monospace; }
+
+.hint {
+  right: 25.8rem;
+  bottom: 1.5rem;
+  margin: 0;
+  color: rgb(255 255 255 / 38%);
+  font-family: "Courier New", monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+}
+
+.showroom button:focus-visible,
+.showroom input:focus-visible,
+.showroom canvas:focus-visible { outline: 2px solid #d9ff52; outline-offset: 3px; }
+
+@media (max-width: 980px) {
+  .showroom { min-height: 58rem; }
+  .topLeft { width: calc(100% - 2rem); top: 1rem; left: 1rem; }
+  .topRight { top: 8.9rem; right: 1rem; }
+  .liveInfo { gap: 1rem; }
+  .rail { top: auto; right: 0.8rem; bottom: 0.8rem; left: 0.8rem; display: grid; width: auto; height: 20rem; grid-template-columns: repeat(3, minmax(15rem, 1fr)); overflow-x: auto; scroll-snap-type: x mandatory; }
+  .glassCard { scroll-snap-align: start; }
+  .hint { right: 1rem; bottom: 21.5rem; }
+  .stats { bottom: 21.5rem; }
+}
+
+@media (max-width: 640px) {
+  .showroom { min-height: 52rem; }
+  .brandLine > span { font-size: 0.67rem; }
+  .tabs { width: calc(100vw - 4.7rem); max-width: 100%; margin-left: 3.1rem; overflow-x: auto; }
+  .tabs button { flex: none; height: 1.9rem; padding-inline: 0.72rem; }
+  .liveInfo { display: none; }
+  .topRight { top: 6.8rem; font-size: 0.48rem; }
+  .topRight > span { display: none; }
+  .stats { bottom: 18.5rem; left: 0.8rem; }
+  .stats span { width: 4.6rem; height: 2.1rem; }
+  .rail { height: 17rem; grid-template-columns: repeat(3, 82vw); }
+  .glassCard { padding: 1rem; }
+  .glassCard h3 { margin-top: 1.3rem; }
+  .noteCard li { min-height: 2.5rem; }
+  .hint { bottom: 18.5rem; max-width: 12rem; text-align: right; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs button { transition: none; }
+}

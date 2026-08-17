@@ -1,0 +1,184 @@
+.hero {
+  --halo-progress: 0;
+  --halo-title-min-scale: 1;
+  --halo-title-scale: 1;
+  --halo-image-scale: 1;
+  --halo-image-y: 0%;
+  --halo-ink: #00deaa;
+  --grid-margin: 1.6rem;
+  --grid-gutter: 1.3333333333rem;
+  position: relative;
+  z-index: 20;
+  height: 140vh;
+  color: var(--halo-ink);
+  background: #000;
+}
+
+.sticky {
+  position: sticky;
+  top: 0;
+  width: 100%;
+  height: 100svh;
+  overflow: hidden;
+  background: #000;
+}
+
+.stage,
+.portrait {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.stage {
+  z-index: 0;
+  background: #000;
+  overflow: hidden;
+}
+
+.portrait {
+  background-color: #03070d;
+  background-image: url("/after-now-girl-black-cat-hero.png");
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transform: translate3d(0, var(--halo-image-y), 0) scale(var(--halo-image-scale));
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.stage::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 8%), transparent 38%, rgb(0 0 0 / 3%)),
+    linear-gradient(180deg, rgb(0 0 0 / 4%), transparent 48%, rgb(0 0 0 / 14%));
+  content: "";
+  pointer-events: none;
+}
+
+.overlay {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.6rem var(--grid-margin) 1.9rem;
+  color: var(--halo-ink);
+  font-family: "Inter Tight", "Arial Narrow", Arial, sans-serif;
+  pointer-events: none;
+}
+
+.overlayTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--grid-gutter);
+}
+
+.title {
+  margin: 0 0 0 -0.045em;
+  color: inherit;
+  font-family: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  font-size: clamp(44px, 13.6vw, 200px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 0.78;
+  white-space: nowrap;
+  transform: scale(var(--halo-title-scale));
+  transform-origin: left top;
+  will-change: transform;
+}
+
+.reserve {
+  display: inline-flex;
+  height: 3.6rem;
+  flex: none;
+  align-items: center;
+  padding: 0 2.2rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  background: transparent;
+  font-size: 1.25rem;
+  letter-spacing: -0.011em;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.reserve:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 4px;
+}
+
+.overlayBottom {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--grid-gutter);
+}
+
+.note,
+.specs {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: -0.006em;
+  line-height: 1.3;
+}
+
+.note { grid-column: 1 / 3; }
+.note span { text-decoration: underline; text-underline-offset: 0.2em; }
+
+.specs {
+  grid-column: 3 / 6;
+  padding: 0;
+  list-style: none;
+}
+
+.specs li::before { content: "• "; }
+
+.about { grid-column: 9 / 13; }
+
+.aboutLabel {
+  margin: 0 0 0.9rem;
+  font-size: 1.2rem;
+  letter-spacing: -0.006em;
+  opacity: 0.6;
+}
+
+.aboutText {
+  max-width: 26ch;
+  margin: 0;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: clamp(20px, 2.6vw, 38px);
+  letter-spacing: -0.017em;
+  line-height: 1.16;
+}
+
+@media (max-width: 1023px) {
+  .hero { --grid-margin: 1.3333333333rem; }
+  .about { grid-column: 1 / 13; grid-row: 1; margin-bottom: 1.6rem; }
+  .note { grid-column: 1 / 5; grid-row: 2; }
+  .specs { grid-column: 5 / 10; grid-row: 2; }
+  .aboutText { max-width: 32ch; }
+  .reserve { height: 3.2rem; padding: 0 1.7rem; font-size: 1.1rem; }
+}
+
+@media (max-width: 699px) {
+  .portrait { background-position: 60% center; }
+  .overlay { padding-bottom: 1.6rem; }
+  .title { letter-spacing: 0; }
+  .reserve { min-height: 44px; padding-inline: 1.15rem; font-size: 0.92rem; }
+  .about { margin-bottom: 1.1rem; }
+  .aboutText { max-width: 22ch; font-size: clamp(20px, 6.4vw, 27px); }
+  .aboutLabel { margin-bottom: 0.55rem; font-size: 0.88rem; }
+  .note { grid-column: 1 / 13; grid-row: 2; margin-bottom: 0.9rem; }
+  .specs { grid-column: 1 / 13; grid-row: 3; font-size: 0.88rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero { height: 100svh; }
+}

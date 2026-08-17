@@ -1,30 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import styles from "./experience.module.css";
-
-const trackedSections = ["top", "manifesto", "works", "lab", "journal", "contact"];
+import { useEffect } from "react";
 
 export default function Experience() {
-  const cursorDotRef = useRef<HTMLSpanElement>(null);
-  const cursorRingRef = useRef<HTMLSpanElement>(null);
-  const progressRef = useRef<HTMLSpanElement>(null);
-  const chapterRef = useRef<HTMLSpanElement>(null);
-  const wandPathRef = useRef<SVGPathElement>(null);
-
   useEffect(() => {
     const root = document.documentElement;
     const prefersReducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    const hasFinePointer = window.matchMedia("(pointer: fine)").matches;
-    const cursorDot = cursorDotRef.current;
-    const cursorRing = cursorRingRef.current;
-    const progress = progressRef.current;
-    const chapter = chapterRef.current;
-
     root.dataset.motion = prefersReducedMotion ? "reduced" : "ready";
-    if (hasFinePointer && !prefersReducedMotion) root.dataset.pointer = "fine";
 
     const revealElements = Array.from(
       document.querySelectorAll<HTMLElement>("[data-reveal]"),
@@ -33,6 +17,7 @@ export default function Experience() {
       document.querySelectorAll<HTMLElement>("[data-type]"),
     );
     const typingTimers: number[] = [];
+    let initialRevealFrame = 0;
     let observer: IntersectionObserver | null = null;
     let typeObserver: IntersectionObserver | null = null;
 
@@ -49,6 +34,15 @@ export default function Experience() {
         { rootMargin: "0px 0px -12% 0px", threshold: 0.08 },
       );
       revealElements.forEach((element) => observer?.observe(element));
+      initialRevealFrame = window.requestAnimationFrame(() => {
+        revealElements.forEach((element) => {
+          const rect = element.getBoundingClientRect();
+          if (rect.top < window.innerHeight * 0.92 && rect.bottom > 0) {
+            element.setAttribute("data-visible", "true");
+            observer?.unobserve(element);
+          }
+        });
+      });
 
       typeElements.forEach((element) => {
         const fullText = element.dataset.type || element.textContent || "";
@@ -80,31 +74,7 @@ export default function Experience() {
       typeElements.forEach((element) => typeObserver?.observe(element));
     }
 
-    let pointerX = -100;
-    let pointerY = -100;
-    let ringX = -100;
-    let ringY = -100;
-    let ringScale = 1;
-    let cursorFrame = 0;
-
-    const renderCursor = () => {
-      ringX += (pointerX - ringX) * 0.16;
-      ringY += (pointerY - ringY) * 0.16;
-      const targetScale = root.dataset.cursor === "active" ? 1.85 : 1;
-      ringScale += (targetScale - ringScale) * 0.13;
-
-      if (cursorDot) {
-        cursorDot.style.transform = `translate3d(${pointerX - 7}px, ${pointerY - 8}px, 0)`;
-      }
-      if (cursorRing) {
-        cursorRing.style.transform = `translate3d(${ringX - 27}px, ${ringY - 27}px, 0) scale(${ringScale})`;
-      }
-      cursorFrame = window.requestAnimationFrame(renderCursor);
-    };
-
     const updatePointer = (event: PointerEvent) => {
-      pointerX = event.clientX;
-      pointerY = event.clientY;
       const normalizedX = event.clientX / window.innerWidth - 0.5;
       const normalizedY = event.clientY / window.innerHeight - 0.5;
       const x = normalizedX * 30;
@@ -113,58 +83,29 @@ export default function Experience() {
       root.style.setProperty("--pointer-y", `${y.toFixed(2)}px`);
       root.style.setProperty("--pointer-lab-x", `${(-x * 0.25).toFixed(2)}px`);
       root.style.setProperty("--pointer-lab-y", `${(-y * 0.25).toFixed(2)}px`);
-      root.style.setProperty("--cat-image-x", `${(-normalizedX * 14).toFixed(2)}px`);
-      root.style.setProperty("--cat-image-y", `${(-normalizedY * 8).toFixed(2)}px`);
+      root.style.setProperty("--cat-image-x", `${(-normalizedX * 5).toFixed(2)}px`);
+      root.style.setProperty("--cat-image-y", `${(-normalizedY * 3).toFixed(2)}px`);
       root.style.setProperty("--cat-image-rotate", `${(normalizedX * 0.8).toFixed(2)}deg`);
+      root.style.setProperty("--cat-head-x", `${(normalizedX * 7).toFixed(2)}px`);
+      root.style.setProperty("--cat-head-y", `${(normalizedY * 4).toFixed(2)}px`);
+      root.style.setProperty("--cat-head-rotate", `${(normalizedX * 1.35).toFixed(2)}deg`);
       root.dataset.cat = "tracking";
-      const originX = window.innerWidth * 0.74;
-      const controlX = originX + (event.clientX - originX) * 0.22;
-      const controlY = Math.max(48, event.clientY * 0.44);
-      wandPathRef.current?.setAttribute(
-        "d",
-        `M ${originX.toFixed(1)} -16 C ${originX.toFixed(1)} ${controlY.toFixed(1)} ${controlX.toFixed(1)} ${(event.clientY * 0.72).toFixed(1)} ${event.clientX.toFixed(1)} ${event.clientY.toFixed(1)}`,
-      );
     };
 
     const updateScrollState = () => {
-      const scrollRange = document.documentElement.scrollHeight - window.innerHeight;
-      const scrollProgress = scrollRange > 0 ? window.scrollY / scrollRange : 0;
+      const heroProgress = Math.min(window.scrollY / (window.innerHeight * 0.82), 1);
       root.dataset.scrolled = window.scrollY > 24 ? "true" : "false";
       root.style.setProperty(
         "--scroll-shift",
         `${Math.min(window.scrollY * 0.035, 48).toFixed(2)}px`,
       );
-      if (progress) progress.style.transform = `scaleY(${scrollProgress})`;
-
-      let activeChapter = 0;
-      trackedSections.forEach((id, index) => {
-        const section = document.getElementById(id);
-        if (section && section.getBoundingClientRect().top < window.innerHeight * 0.58) {
-          activeChapter = index;
-        }
-      });
-      if (chapter) {
-        chapter.textContent = `${String(activeChapter + 1).padStart(2, "0")} / ${String(trackedSections.length).padStart(2, "0")}`;
-      }
+      root.style.setProperty("--hero-title-scale", (1 - heroProgress * 0.08).toFixed(4));
+      root.style.setProperty("--hero-media-scale", (1.015 + heroProgress * 0.045).toFixed(4));
+      root.style.setProperty("--hero-fade", (1 - heroProgress * 0.72).toFixed(4));
     };
 
-    const interactiveElements = Array.from(
-      document.querySelectorAll<HTMLElement>("a, article"),
-    );
-    const activateCursor = () => {
-      root.dataset.cursor = "active";
-    };
-    const deactivateCursor = () => {
-      root.dataset.cursor = "idle";
-    };
-
-    if (hasFinePointer && !prefersReducedMotion) {
+    if (!prefersReducedMotion) {
       window.addEventListener("pointermove", updatePointer, { passive: true });
-      interactiveElements.forEach((element) => {
-        element.addEventListener("pointerenter", activateCursor);
-        element.addEventListener("pointerleave", deactivateCursor);
-      });
-      cursorFrame = window.requestAnimationFrame(renderCursor);
     }
 
     updateScrollState();
@@ -175,18 +116,12 @@ export default function Experience() {
       observer?.disconnect();
       typeObserver?.disconnect();
       typingTimers.forEach((timer) => window.clearTimeout(timer));
-      window.cancelAnimationFrame(cursorFrame);
+      window.cancelAnimationFrame(initialRevealFrame);
       window.removeEventListener("pointermove", updatePointer);
       window.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", updateScrollState);
-      interactiveElements.forEach((element) => {
-        element.removeEventListener("pointerenter", activateCursor);
-        element.removeEventListener("pointerleave", deactivateCursor);
-      });
       delete root.dataset.motion;
       delete root.dataset.scrolled;
-      delete root.dataset.pointer;
-      delete root.dataset.cursor;
       delete root.dataset.cat;
       root.style.removeProperty("--pointer-x");
       root.style.removeProperty("--pointer-y");
@@ -196,20 +131,11 @@ export default function Experience() {
       root.style.removeProperty("--cat-image-y");
       root.style.removeProperty("--cat-image-rotate");
       root.style.removeProperty("--scroll-shift");
+      root.style.removeProperty("--hero-title-scale");
+      root.style.removeProperty("--hero-media-scale");
+      root.style.removeProperty("--hero-fade");
     };
   }, []);
 
-  return (
-    <>
-      <span ref={cursorDotRef} className={styles.cursorDot} aria-hidden="true" />
-      <span ref={cursorRingRef} className={styles.cursorRing} aria-hidden="true" />
-      <svg className={styles.wandString} aria-hidden="true">
-        <path ref={wandPathRef} d="M 1050 -16 C 1050 120 990 240 900 360" />
-      </svg>
-      <div className={styles.progress} aria-hidden="true">
-        <span ref={chapterRef}>01 / 06</span>
-        <i><b ref={progressRef} /></i>
-      </div>
-    </>
-  );
+  return null;
 }

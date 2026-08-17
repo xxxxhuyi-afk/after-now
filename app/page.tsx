@@ -1,6 +1,11 @@
-import Image from "next/image";
+import ArchiveMarquee from "./archive-marquee";
+import CharacterIntro from "./character-intro";
 import Experience from "./experience";
-import MotionCanvas from "./motion-canvas";
+import HaloHero from "./halo-hero";
+import ProjectSpotlight from "./project-spotlight";
+import ProjectRedArchive from "./project-red-archive";
+import ProjectVideoScrub from "./project-video-scrub";
+import ShowroomModel from "./showroom-model";
 import styles from "./page.module.css";
 
 const projects = [
@@ -24,11 +29,11 @@ const projects = [
   },
   {
     number: "03",
-    title: "Field Notes / 场域笔记",
-    discipline: "Research & direction",
-    year: "Ongoing",
+    title: "After Now / 天台之后",
+    discipline: "Visual narrative",
+    year: "2026",
     description:
-      "收集真实空间与计算世界之间的观察、碎片与视觉实验。Field observations.",
+      "一次关于坠落、转身与重新进入未来的影像叙事。Moving image & visual archive.",
     visualClass: styles.visualField,
   },
 ];
@@ -81,58 +86,7 @@ export default function Home() {
   return (
     <main className={styles.page}>
       <Experience />
-
-      <header className={styles.siteHeader}>
-        <a className={styles.wordmark} href="#top" aria-label="After Now 首页">
-          After Now
-          <span>此刻之后</span>
-        </a>
-        <nav className={styles.navigation} aria-label="主导航">
-          <a href="#works">Works</a>
-          <a href="#lab">Lab</a>
-          <a href="#journal">Journal</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <span className={styles.headerMark}>AN° / 2026</span>
-      </header>
-
-      <section className={styles.hero} id="top" aria-labelledby="hero-title">
-        <MotionCanvas />
-        <div className={styles.heroGrid} aria-hidden="true" />
-        <div className={styles.catHero} data-testid="cat-hero" aria-hidden="true">
-          <Image
-            src="/after-now-cyber-cat-hero.png"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-          />
-        </div>
-
-        <div className={styles.catStatus} data-testid="cat-status" aria-hidden="true">
-          <i />
-          <span>Awake</span>
-        </div>
-
-        <div className={styles.heroContent}>
-          <h1 className={styles.heroTitle} id="hero-title">
-            <span data-reveal>此刻之后</span>
-          </h1>
-          <div className={styles.heroStatement} data-reveal>
-            <i aria-hidden="true" />
-            <p>此刻，是未来最早的样子。</p>
-          </div>
-          <div className={styles.heroEnglish} data-reveal>
-            <strong>After Now</strong>
-            <span>Designing What Comes Next.</span>
-          </div>
-        </div>
-
-        <a className={styles.scrollCue} href="#manifesto" data-reveal>
-          <span>Scroll to explore</span>
-          <span className={styles.scrollLine} aria-hidden="true" />
-        </a>
-      </section>
+      <HaloHero />
 
       <div className={styles.motionTicker} aria-hidden="true">
         <div className={styles.motionTickerTrack}>
@@ -146,6 +100,10 @@ export default function Home() {
           <span>Designing What Comes Next</span><i>✦</i>
         </div>
       </div>
+
+      <CharacterIntro />
+
+      <ArchiveMarquee />
 
       <section
         className={styles.manifesto}
@@ -205,33 +163,14 @@ export default function Home() {
                 <span>{project.year}</span>
               </div>
               <div className={`${styles.projectVisual} ${project.visualClass}`}>
-                <span className={styles.placeholderLabel}>
-                  Concept visual · Replace with project imagery
-                </span>
                 {project.number === "01" && (
-                  <>
-                    <span className={styles.unseenPortal} aria-hidden="true" />
-                    <span className={styles.unseenLight} aria-hidden="true" />
-                  </>
+                  <ProjectSpotlight />
                 )}
                 {project.number === "02" && (
-                  <>
-                    <span className={styles.machineSphere} aria-hidden="true" />
-                    <span className={styles.machineTrack} aria-hidden="true" />
-                    <span className={styles.machineLabel} aria-hidden="true">
-                      ATTENTION / 0.01
-                    </span>
-                  </>
+                  <ProjectVideoScrub />
                 )}
                 {project.number === "03" && (
-                  <>
-                    <span className={styles.fieldContour} aria-hidden="true" />
-                    <span className={styles.fieldDotOne} aria-hidden="true" />
-                    <span className={styles.fieldDotTwo} aria-hidden="true" />
-                    <span className={styles.fieldNote} aria-hidden="true">
-                      Site 03<br />Observed 16:42
-                    </span>
-                  </>
+                  <ProjectRedArchive />
                 )}
               </div>
               <div className={styles.projectInfo}>
@@ -276,30 +215,7 @@ export default function Home() {
             </article>
           ))}
         </div>
-        <div className={styles.productPreview} data-reveal>
-          <div className={styles.productTopline}>
-            <span>Product preview / 产品预留</span>
-            <span>Package pending / 待接入</span>
-          </div>
-          <div className={styles.productBody}>
-            <div className={styles.productLead}>
-              <p className={styles.techType} data-type="产品接口预留完成">
-                产品接口预留完成
-              </p>
-              <h3>智能抠图<br />与立体字生成</h3>
-            </div>
-            <div className={styles.productCopy}>
-              <p>
-                产品包接入后，访客可以直接在网站内免费体验 3 次；体验结束后，
-                页面会自然推荐下载完整版本。
-              </p>
-              <span>待你提供打包产品文件后接入 →</span>
-            </div>
-          </div>
-        </div>
-        <p className={styles.labPlaceholder} data-reveal>
-          Lab 内容目前为概念占位；产品模块将在收到打包文件后启用真实体验。
-        </p>
+        <ShowroomModel />
       </section>
 
       <section
