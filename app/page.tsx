@@ -40,6 +40,13 @@ const projects = [
 
 const labNotes = [
   {
+    index: "L—04",
+    title: "Image Canvas",
+    subtitle: "生图画布",
+    copy: "把想象变成图像，在画布上自由排列。",
+    english: "Turn imagination into images. Arrange them on your own canvas.",
+  },
+  {
     index: "L—01",
     title: "Paper Playground",
     subtitle: "纸卷游乐场",
@@ -211,7 +218,7 @@ export default function Home() {
                 <span>{note.index}</span>
                 <span>Open study</span>
               </div>
-              <h3>{note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
+              <h3>{note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
               {note.subtitle && <h4 className={styles.labSubtitle}>{note.subtitle}</h4>}
               <p>{note.copy}</p>
               {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
