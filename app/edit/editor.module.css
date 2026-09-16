@@ -1,0 +1,29 @@
+.editor { min-height: 100svh; background: #171a17; color: #eef0e8; font-family: Arial, sans-serif; }
+.editor * { box-sizing: border-box; }
+.header { height: 72px; padding: 0 28px; border-bottom: 1px solid #393e36; display: flex; justify-content: space-between; align-items: center; }
+.header b { font-size: 20px; letter-spacing: -.06em; }
+.header span { margin-left: 20px; font-size: 11px; color: #a3ac9b; letter-spacing: .15em; }
+.header a { color: #eef0e8; font-size: 12px; }
+.workspace { display: grid; grid-template-columns: 290px minmax(0, 1fr); }
+.panel { padding: 28px 22px; border-right: 1px solid #393e36; }
+.panel h1 { font-size: 30px; font-weight: 400; margin: 10px 0; }
+.panel p { font-size: 12px; line-height: 1.7; color: #b4bcae; }
+.panel .eyebrow { color: #b6fb50; font-size: 10px; letter-spacing: .2em; }
+.editor button, .editor input, .editor select { font: inherit; font-size: 12px; border: 1px solid #4a5144; background: #242921; color: #eef0e8; border-radius: 5px; padding: 10px; min-height: 40px; }
+.editor button { cursor: pointer; }
+.editor button:disabled { opacity: .5; cursor: wait; }
+.editor :focus-visible { outline: 2px solid #b6fb50; outline-offset: 3px; }
+.devices, .actions { display: flex; gap: 8px; margin: 20px 0; }
+.devices button, .actions button { flex: 1; }
+.devices button[aria-pressed="true"], .editor .save { background: #b6fb50; color: #19220d; border-color: #b6fb50; }
+.panel label { display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: #b4bcae; margin-bottom: 16px; }
+.fields { padding: 0; margin: 20px 0 0; border: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; min-width: 0; }
+.fields input { width: 100%; }
+.fields label:last-child { grid-column: 1 / -1; }
+.save { width: 100%; font-weight: bold !important; }
+.panel .hint { font-size: 11px; color: #939e8c; }
+.panel .status { color: #b6fb50; min-height: 42px; }
+.canvas { padding: 22px; overflow: auto; height: calc(100svh - 72px); background: radial-gradient(#41483c 1px, transparent 1px) 0 0 / 16px 16px; }
+.canvasLabel { display: flex; justify-content: space-between; gap: 25px; font-size: 10px; color: #bcc4b5; letter-spacing: .1em; margin-bottom: 18px; }
+.frame { display: block; height: calc(100svh - 150px); min-height: 540px; border: 1px solid #51594a; background: #080908; max-width: none; }
+@media (max-width: 760px) { .workspace { grid-template-columns: 1fr; } .panel { border-right: 0; } .header { padding: 0 16px; } .header span { margin-left: 10px; } .canvas { height: 750px; } .frame { height: 650px; } }

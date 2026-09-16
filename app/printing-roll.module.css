@@ -1,0 +1,10 @@
+.experiment { height: 100svh; min-height: 440px; display: flex; flex-direction: column; background: var(--acid, #d9ff52); color: #080908; }
+.header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 24px; padding: 22px 32px; border-bottom: 1px solid #08090833; }
+.header p { font-size: 10px; letter-spacing: .12em; margin-bottom: 6px; }
+.header h1 { font-size: clamp(20px, 3vw, 32px); font-weight: 400; letter-spacing: -.04em; }
+.back { color: inherit; text-decoration: none; font-size: 13px; padding: 12px 0; }
+.back:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+.credit { font-size: 11px; }
+.frame { display: block; flex: 1; width: 100%; min-height: 0; border: 0; background: var(--acid, #d9ff52); }
+.toolbar { padding: 14px 24px; font-size: 11px; text-align: center; flex-shrink: 0; }
+@media (max-width: 600px) { .header { padding: 14px 18px; gap: 16px; flex-wrap: wrap; } .credit { width: 100%; font-size: 10px; } .toolbar { padding: 12px; font-size: 10px; } }

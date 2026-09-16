@@ -1,0 +1,1367 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>AI 超级个人</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #d9ff52;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        display: block;
+        cursor: grab;
+      }
+      #stage:active {
+        cursor: grabbing;
+      }
+
+      .hud {
+        position: fixed;
+        color: #141414;
+        z-index: 10;
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      #brand {
+        top: 34px;
+        left: 40px;
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+      }
+      #brand .mark {
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: -0.06em;
+        font-style: italic;
+      }
+      #brand .mark sup {
+        font-size: 10px;
+        font-style: normal;
+        font-weight: 600;
+        vertical-align: super;
+        letter-spacing: 0;
+      }
+      #brand .sub {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #6a6a6e;
+      }
+
+      #edition {
+        top: 40px;
+        right: 40px;
+        text-align: right;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: #6a6a6e;
+        line-height: 1.9;
+      }
+      #edition b {
+        color: #141414;
+      }
+
+      #counter {
+        bottom: 36px;
+        right: 40px;
+        text-align: right;
+      }
+      #counter .num {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+      #counter .lbl {
+        margin-top: 6px;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #6a6a6e;
+      }
+
+      #hint {
+        bottom: 40px;
+        left: 40px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: #6a6a6e;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #hint .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #e4551f;
+        animation: pulse 1.8s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.5);
+          opacity: 0.45;
+        }
+      }
+
+      #meter {
+        bottom: 108px;
+        right: 40px;
+        width: 120px;
+        height: 2px;
+        background: rgba(20, 20, 20, 0.12);
+        overflow: hidden;
+      }
+      #meter .fill {
+        height: 100%;
+        width: 0%;
+        background: #141414;
+        transition: width 0.15s linear;
+      }
+
+      @media (max-width: 720px) {
+        #brand {
+          top: 22px;
+          left: 22px;
+        }
+        #edition {
+          top: 26px;
+          right: 22px;
+        }
+        #counter {
+          bottom: 24px;
+          right: 22px;
+        }
+        #counter .num {
+          font-size: 30px;
+        }
+        #hint {
+          bottom: 28px;
+          left: 22px;
+          letter-spacing: 0.2em;
+        }
+        #meter {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #hint .dot {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+
+    <div class="hud" id="brand">
+      <div class="sub">AI 超级个人</div>
+    </div>
+
+    <div class="hud" id="edition">来自 @thebuggeddev 的效果</div>
+
+    <div class="hud" id="counter">
+      <div class="num" id="counterNum">0000</div>
+      <div class="lbl">Pages printed</div>
+    </div>
+
+    <div class="hud" id="meter"><div class="fill" id="meterFill"></div></div>
+
+    <div class="hud" id="hint">
+      <div class="dot"></div>
+      <span id="hintText">Move to steer &mdash; click to pause</span>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        /* ============================================================
+     VX — THE PRINTING ROLL
+     An endless strip of paper unrolls behind a heavy roll,
+     printing portfolio pages in its wake. One texture atlas,
+     one ribbon mesh, fixed vertex budget, zero per-frame
+     allocations. Everything procedural, nothing external.
+     ============================================================ */
+
+        // ---------- Constants ----------
+        var RIBBON_W = 1.5; // paper width
+        var ATLAS_N = 8; // pages in the atlas
+        var ROLL_R = 1.75;
+        // one full revolution lays down exactly one atlas — this is what makes the
+        // print on the barrel hand off to the floor with zero drift, forever
+        var CARD_LEN = (2 * Math.PI * ROLL_R) / ATLAS_N;
+        var INNER_R = ROLL_R * 0.52;
+        var STEP = 0.12; // path sampling distance
+        var MAX_PTS = 760; // fixed history budget (~91 world units of trail)
+        var CURL_SEG = 16; // segments peeling off the roll
+        var MAX_SEG = MAX_PTS + CURL_SEG + 2;
+        var FLOOR_RGB = "vec3(0.694, 1.0, 0.0844)";
+
+        // ---------- Renderer / scene ----------
+        var canvas = document.getElementById("stage");
+        var renderer = new THREE.WebGLRenderer({
+          canvas: canvas,
+          antialias: true,
+        });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+
+        var scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xd9ff52).convertSRGBToLinear();
+        scene.fog = new THREE.Fog(new THREE.Color(0xd9ff52).convertSRGBToLinear(), 24, 58);
+
+        var camera = new THREE.PerspectiveCamera(
+          32,
+          window.innerWidth / window.innerHeight,
+          0.5,
+          200,
+        );
+
+        // ---------- Lighting ----------
+        var hemi = new THREE.HemisphereLight(0xffffff, 0xd6d6da, 0.95);
+        scene.add(hemi);
+
+        var sun = new THREE.DirectionalLight(0xffffff, 0.85);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        sun.shadow.camera.left = -9;
+        sun.shadow.camera.right = 9;
+        sun.shadow.camera.top = 9;
+        sun.shadow.camera.bottom = -9;
+        sun.shadow.camera.near = 1;
+        sun.shadow.camera.far = 40;
+        sun.shadow.bias = -0.0004;
+        sun.shadow.normalBias = 0.02;
+        scene.add(sun);
+        scene.add(sun.target);
+
+        var fill = new THREE.DirectionalLight(0xffffff, 0.22);
+        fill.position.set(-6, 4, -8);
+        scene.add(fill);
+
+        // ---------- Floor ----------
+        var floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(400, 400),
+          new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0xd9ff52).convertSRGBToLinear(),
+          }),
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // ============================================================
+        // Procedural texture atlas — 8 portfolio pages, one canvas
+        // ============================================================
+        var seed = 7;
+        function rand() {
+          seed = (seed * 16807) % 2147483647;
+          return (seed - 1) / 2147483646;
+        }
+
+        function buildAtlas() {
+          var CELL = 512;
+          var cv = document.createElement("canvas");
+          cv.width = CELL * ATLAS_N;
+          cv.height = CELL;
+          var g = cv.getContext("2d");
+
+          var INK = "#161616",
+            PAPER = "#fbfaf7";
+          var ORANGE = "#e4551f",
+            AMBER = "#f0a32e",
+            BLUE = "#1e4fd6";
+          var GRAYS = ["#2a2a2c", "#4a4a4e", "#6f6f74", "#9a9aa0", "#c5c5ca"];
+
+          // paper strip base
+          g.fillStyle = "#f6f5f1";
+          g.fillRect(0, 0, cv.width, cv.height);
+          // faint fibre grain
+          for (var i = 0; i < 2600; i++) {
+            g.fillStyle = "rgba(120,116,105," + (0.015 + rand() * 0.03) + ")";
+            g.fillRect(
+              rand() * cv.width,
+              rand() * cv.height,
+              1 + rand() * 2,
+              1,
+            );
+          }
+
+          function bars(x, y, w, n, lh, color) {
+            g.fillStyle = color || "#c9c8c2";
+            for (var r = 0; r < n; r++) {
+              var bw = w * (0.55 + rand() * 0.45);
+              g.fillRect(x, y + r * lh, bw, Math.max(2, lh * 0.42));
+            }
+          }
+          function label(x, y, txt, color, size) {
+            g.fillStyle = color || INK;
+            g.font =
+              "700 " +
+              (size || 13) +
+              'px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+            g.fillText(txt, x, y);
+          }
+          function mono(x, y, txt, color, size) {
+            g.fillStyle = color || "#8a8a86";
+            g.font =
+              "600 " +
+              (size || 11) +
+              'px "SF Mono", Menlo, Consolas, monospace';
+            g.fillText(txt, x, y);
+          }
+          // fake photo: layered gradient blocks
+          function photo(x, y, w, h, tint) {
+            var gr = g.createLinearGradient(x, y, x + w, y + h);
+            gr.addColorStop(0, tint[0]);
+            gr.addColorStop(1, tint[1]);
+            g.fillStyle = gr;
+            g.fillRect(x, y, w, h);
+            for (var b = 0; b < 9; b++) {
+              var bw = w * (0.08 + rand() * 0.3),
+                bh = h * (0.1 + rand() * 0.5);
+              var bx = x + rand() * (w - bw),
+                by = y + h - bh - rand() * h * 0.25;
+              g.fillStyle =
+                "rgba(" +
+                (rand() < 0.5 ? "20,20,22" : "245,244,240") +
+                "," +
+                (0.12 + rand() * 0.3) +
+                ")";
+              g.fillRect(bx, by, bw, bh);
+            }
+            var hl = g.createLinearGradient(x, y, x, y + h * 0.5);
+            hl.addColorStop(0, "rgba(255,255,255,0.28)");
+            hl.addColorStop(1, "rgba(255,255,255,0)");
+            g.fillStyle = hl;
+            g.fillRect(x, y, w, h * 0.5);
+          }
+
+          var M = 30; // card inset inside cell
+
+          function cardFrame(cx) {
+            var x = cx + M,
+              y = M,
+              w = CELL - M * 2,
+              h = CELL - M * 2;
+            g.save();
+            g.shadowColor = "rgba(30,30,30,0.10)";
+            g.shadowBlur = 14;
+            g.shadowOffsetY = 3;
+            g.fillStyle = PAPER;
+            g.fillRect(x, y, w, h);
+            g.restore();
+            g.strokeStyle = "rgba(20,20,20,0.08)";
+            g.lineWidth = 1;
+            g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+            return { x: x, y: y, w: w, h: h };
+          }
+          function indexTag(f, n) {
+            g.save();
+            g.translate(f.x + f.w - 12, f.y + f.h - 14);
+            g.rotate(-Math.PI / 2);
+            mono(
+              0,
+              0,
+              "0" + String(n) + String.fromCharCode(47) + "008",
+              "#9a9994",
+              11,
+            );
+            g.restore();
+          }
+
+          var draws = [
+            // 01 — orange field, dark disc, editorial header
+            function (f) {
+              label(f.x + 22, f.y + 36, "VX PRESS", INK, 15);
+              mono(f.x + f.w - 96, f.y + 34, "A/W 26");
+              g.fillStyle = ORANGE;
+              g.fillRect(f.x + 22, f.y + 54, f.w - 44, f.h - 150);
+              g.fillStyle = "rgba(20,16,12,0.85)";
+              g.beginPath();
+              g.arc(
+                f.x + f.w / 2,
+                f.y + 54 + (f.h - 150) / 2,
+                (f.h - 150) * 0.31,
+                0,
+                Math.PI * 2,
+              );
+              g.fill();
+              g.fillStyle = "rgba(255,255,255,0.9)";
+              g.fillRect(f.x + 44, f.y + 54 + (f.h - 150) * 0.68, f.w - 200, 5);
+              bars(f.x + 22, f.y + f.h - 78, f.w * 0.5, 3, 15);
+              label(
+                f.x + f.w - 130,
+                f.y + f.h - 30,
+                "ATELIER 041",
+                "#8a8a86",
+                11,
+              );
+            },
+            // 02 — black and white architecture photo
+            function (f) {
+              photo(f.x + 20, f.y + 20, f.w - 40, f.h * 0.62, [
+                "#3a3a3e",
+                "#0e0e10",
+              ]);
+              label(f.x + 22, f.y + f.h * 0.62 + 52, "CONCRETE INDEX", INK, 17);
+              bars(f.x + 22, f.y + f.h * 0.62 + 70, f.w - 60, 3, 15);
+              mono(f.x + 22, f.y + f.h - 26, "PP. 112 — 139");
+            },
+            // 03 — typographic cover
+            function (f) {
+              g.fillStyle = INK;
+              g.font =
+                '800 italic 128px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+              g.fillText("VX", f.x + 26, f.y + 148);
+              g.fillStyle = ORANGE;
+              g.fillRect(f.x + 30, f.y + 176, 66, 10);
+              bars(f.x + 30, f.y + 214, f.w - 90, 7, 22, "#b9b8b2");
+              label(
+                f.x + 30,
+                f.y + f.h - 34,
+                "MANIFESTO — TEN RULES OF PRINT",
+                "#5c5c60",
+                12,
+              );
+            },
+            // 04 — grid of six studies
+            function (f) {
+              label(f.x + 22, f.y + 36, "STUDIES", INK, 14);
+              mono(f.x + f.w - 108, f.y + 34, "GRID 3×2");
+              var tints = [
+                ["#c9c9ce", "#8f8f96"],
+                [AMBER, "#c77e14"],
+                ["#2c2c30", "#141416"],
+                ["#dcd9d2", "#b0aca2"],
+                [BLUE, "#123089"],
+                ["#7d7d84", "#4c4c52"],
+              ];
+              var gw = (f.w - 44 - 24) / 3,
+                gh = (f.h - 170) / 2;
+              for (var i2 = 0; i2 < 6; i2++) {
+                var gx = f.x + 22 + (i2 % 3) * (gw + 12);
+                var gy = f.y + 56 + Math.floor(i2 / 3) * (gh + 12);
+                photo(gx, gy, gw, gh, tints[i2]);
+              }
+              bars(f.x + 22, f.y + f.h - 84, f.w * 0.6, 3, 15);
+            },
+            // 05 — amber arcs
+            function (f) {
+              g.fillStyle = AMBER;
+              g.fillRect(f.x + 20, f.y + 20, f.w - 40, f.h - 40);
+              g.strokeStyle = "rgba(251,250,247,0.9)";
+              g.lineWidth = 7;
+              for (var a2 = 0; a2 < 5; a2++) {
+                g.beginPath();
+                g.arc(
+                  f.x + f.w * 0.5,
+                  f.y + f.h * 0.86,
+                  46 + a2 * 34,
+                  Math.PI,
+                  Math.PI * 2,
+                );
+                g.stroke();
+              }
+              g.fillStyle = "rgba(22,18,10,0.9)";
+              g.fillRect(f.x + 42, f.y + 46, 88, 12);
+              label(f.x + 42, f.y + 84, "SOUND / SHAPE", "#161616", 15);
+              mono(
+                f.x + 42,
+                f.y + f.h - 44,
+                "INSTALLATION — HALL B",
+                "rgba(22,18,10,0.75)",
+              );
+            },
+            // 06 — device mock over blue band
+            function (f) {
+              g.fillStyle = BLUE;
+              g.fillRect(f.x + 20, f.y + f.h * 0.58, f.w - 40, f.h * 0.42 - 20);
+              label(f.x + 24, f.y + 42, "INTERFACE No.9", INK, 15);
+              bars(f.x + 24, f.y + 58, f.w * 0.55, 2, 14);
+              // device
+              var dw = f.w * 0.44,
+                dh = f.h * 0.52,
+                dx = f.x + f.w / 2 - dw / 2,
+                dy = f.y + f.h * 0.3;
+              g.save();
+              g.shadowColor = "rgba(10,20,60,0.35)";
+              g.shadowBlur = 18;
+              g.shadowOffsetY = 8;
+              g.fillStyle = "#101014";
+              g.fillRect(dx, dy, dw, dh);
+              g.restore();
+              g.fillStyle = "#fbfaf7";
+              g.fillRect(dx + 8, dy + 8, dw - 16, dh - 16);
+              photo(dx + 8, dy + 8, dw - 16, (dh - 16) * 0.5, [
+                "#9aa8d8",
+                "#5468b8",
+              ]);
+              bars(dx + 16, dy + 12 + (dh - 16) * 0.5 + 8, dw - 44, 4, 12);
+              mono(
+                f.x + 26,
+                f.y + f.h - 32,
+                "CASE — LEDGER APP",
+                "rgba(251,250,247,0.85)",
+              );
+            },
+            // 07 — quiet white, small centered plate
+            function (f) {
+              var pw = f.w * 0.42,
+                ph = f.h * 0.4;
+              photo(f.x + (f.w - pw) / 2, f.y + 72, pw, ph, [
+                "#d9d6cd",
+                "#a8a49a",
+              ]);
+              g.fillStyle = ORANGE;
+              g.beginPath();
+              g.arc(f.x + (f.w + pw) / 2 - 8, f.y + 72 + 8, 9, 0, Math.PI * 2);
+              g.fill();
+              label(
+                f.x + f.w / 2 - 62,
+                f.y + 96 + ph + 26,
+                "STILL LIFE, 04",
+                INK,
+                14,
+              );
+              bars(f.x + f.w / 2 - 84, f.y + 96 + ph + 44, 168, 3, 14);
+              mono(f.x + f.w / 2 - 46, f.y + f.h - 30, "EDITION 2026");
+            },
+            // 08 — dark closing plate
+            function (f) {
+              g.fillStyle = "#141416";
+              g.fillRect(f.x + 20, f.y + 20, f.w - 40, f.h - 40);
+              g.strokeStyle = "rgba(251,250,247,0.35)";
+              g.lineWidth = 1;
+              for (var l2 = 0; l2 < 6; l2++) {
+                g.beginPath();
+                g.moveTo(f.x + 44, f.y + 70 + l2 * 26);
+                g.lineTo(f.x + f.w - 44, f.y + 70 + l2 * 26);
+                g.stroke();
+              }
+              g.fillStyle = ORANGE;
+              g.beginPath();
+              g.arc(f.x + f.w - 78, f.y + 96, 16, 0, Math.PI * 2);
+              g.fill();
+              g.fillStyle = "#fbfaf7";
+              g.font =
+                '800 italic 44px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+              g.fillText("END / LOOP", f.x + 44, f.y + f.h - 96);
+              mono(
+                f.x + 44,
+                f.y + f.h - 52,
+                "THE ROLL CONTINUES",
+                "rgba(251,250,247,0.6)",
+              );
+            },
+          ];
+
+          for (var c = 0; c < ATLAS_N; c++) {
+            var frame = cardFrame(c * CELL);
+            draws[c](frame);
+            indexTag(frame, c + 1);
+          }
+
+          var tex = new THREE.CanvasTexture(cv);
+          tex.wrapS = THREE.RepeatWrapping;
+          tex.wrapT = THREE.ClampToEdgeWrapping;
+          tex.encoding = THREE.sRGBEncoding;
+          tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          return tex;
+        }
+
+        // Spiral cap: hundreds of wound paper layers, drawn once
+        function buildCapTexture() {
+          var S = 1024;
+          var cv = document.createElement("canvas");
+          cv.width = S;
+          cv.height = S;
+          var g = cv.getContext("2d");
+          var cx = S / 2,
+            innerPx = (INNER_R / ROLL_R) * (S / 2);
+
+          g.fillStyle = "#f2f1ec";
+          g.fillRect(0, 0, S, S);
+
+          for (var r = innerPx; r < S / 2 - 1; r += 2.1) {
+            var a = 0.045 + rand() * 0.1 + (r % 29 < 2.2 ? 0.12 : 0);
+            g.strokeStyle = "rgba(112,110,102," + a.toFixed(3) + ")";
+            g.lineWidth = rand() < 0.12 ? 1.6 : 0.8;
+            g.beginPath();
+            g.arc(cx, cx, r, 0, Math.PI * 2);
+            g.stroke();
+          }
+          // spiral cut line
+          g.strokeStyle = "rgba(90,88,80,0.35)";
+          g.lineWidth = 1.4;
+          g.beginPath();
+          var turns = 26;
+          for (var t = 0; t <= 1; t += 0.002) {
+            var rr = innerPx + t * (S / 2 - innerPx - 2);
+            var an = t * turns * Math.PI * 2;
+            var px = cx + Math.cos(an) * rr,
+              py = cx + Math.sin(an) * rr;
+            if (t === 0) g.moveTo(px, py);
+            else g.lineTo(px, py);
+          }
+          g.stroke();
+          // inner shading
+          var sh = g.createRadialGradient(
+            cx,
+            cx,
+            innerPx,
+            cx,
+            cx,
+            innerPx + 90,
+          );
+          sh.addColorStop(0, "rgba(60,58,52,0.32)");
+          sh.addColorStop(1, "rgba(60,58,52,0)");
+          g.fillStyle = sh;
+          g.beginPath();
+          g.arc(cx, cx, S / 2, 0, Math.PI * 2);
+          g.fill();
+          // outer rim
+          var rim = g.createRadialGradient(cx, cx, S / 2 - 26, cx, cx, S / 2);
+          rim.addColorStop(0, "rgba(60,58,52,0)");
+          rim.addColorStop(1, "rgba(60,58,52,0.22)");
+          g.fillStyle = rim;
+          g.beginPath();
+          g.arc(cx, cx, S / 2, 0, Math.PI * 2);
+          g.fill();
+
+          var tex = new THREE.CanvasTexture(cv);
+          tex.encoding = THREE.sRGBEncoding;
+          tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          return tex;
+        }
+
+        // Blob shadow under the roll
+        function buildBlobTexture() {
+          var S = 256;
+          var cv = document.createElement("canvas");
+          cv.width = S;
+          cv.height = S;
+          var g = cv.getContext("2d");
+          var gr = g.createRadialGradient(S / 2, S / 2, 6, S / 2, S / 2, S / 2);
+          gr.addColorStop(0, "rgba(20,20,22,0.34)");
+          gr.addColorStop(0.55, "rgba(20,20,22,0.14)");
+          gr.addColorStop(1, "rgba(20,20,22,0)");
+          g.fillStyle = gr;
+          g.fillRect(0, 0, S, S);
+          return new THREE.CanvasTexture(cv);
+        }
+
+        var atlasTex = buildAtlas();
+        var capTex = buildCapTexture();
+
+        // ============================================================
+        // The roll
+        // ============================================================
+        var rollGroup = new THREE.Group(); // yaw + position
+        var spinner = new THREE.Group(); // rolls about local X
+        rollGroup.add(spinner);
+        scene.add(rollGroup);
+
+        // The barrel wears the same atlas. With circumference == atlas length the
+        // texture is glued to the mesh (repeat 1, constant 0.25 phase) and the card
+        // touching the floor is always the exact card the ribbon prints there.
+        var barrelTex = atlasTex.clone();
+        barrelTex.needsUpdate = true;
+        barrelTex.wrapS = THREE.RepeatWrapping;
+        barrelTex.wrapT = THREE.ClampToEdgeWrapping;
+        barrelTex.repeat.set(1, 1);
+        barrelTex.offset.x = 0.25;
+        var paperMat = new THREE.MeshStandardMaterial({
+          map: barrelTex,
+          roughness: 0.92,
+          metalness: 0,
+        });
+
+        var barrelGeo = new THREE.CylinderGeometry(
+          ROLL_R,
+          ROLL_R,
+          RIBBON_W,
+          96,
+          1,
+          true,
+        );
+        barrelGeo.rotateZ(Math.PI / 2);
+        var barrel = new THREE.Mesh(barrelGeo, paperMat);
+        barrel.castShadow = true;
+        spinner.add(barrel);
+
+        var capMat = new THREE.MeshStandardMaterial({
+          map: capTex,
+          roughness: 0.95,
+          metalness: 0,
+        });
+        var capGeo = new THREE.RingGeometry(INNER_R, ROLL_R, 96, 1);
+        var capR = new THREE.Mesh(capGeo, capMat);
+        capR.rotation.y = Math.PI / 2;
+        capR.position.x = RIBBON_W / 2 + 0.001;
+        capR.castShadow = true;
+        spinner.add(capR);
+        var capL = new THREE.Mesh(capGeo, capMat);
+        capL.rotation.y = -Math.PI / 2;
+        capL.position.x = -RIBBON_W / 2 - 0.001;
+        capL.castShadow = true;
+        spinner.add(capL);
+
+        var coreGeo = new THREE.CylinderGeometry(
+          INNER_R,
+          INNER_R,
+          RIBBON_W * 1.002,
+          48,
+          1,
+          true,
+        );
+        coreGeo.rotateZ(Math.PI / 2);
+        var core = new THREE.Mesh(
+          coreGeo,
+          new THREE.MeshStandardMaterial({
+            color: 0xdad7cf,
+            roughness: 1,
+            metalness: 0,
+            side: THREE.DoubleSide,
+          }),
+        );
+        spinner.add(core);
+
+        var blob = new THREE.Mesh(
+          new THREE.PlaneGeometry(ROLL_R * 3.4, RIBBON_W * 2.2),
+          new THREE.MeshBasicMaterial({
+            map: buildBlobTexture(),
+            transparent: true,
+            depthWrite: false,
+          }),
+        );
+        blob.rotation.x = -Math.PI / 2;
+        blob.renderOrder = 1;
+        scene.add(blob);
+
+        // ============================================================
+        // Ribbon — one fixed-budget mesh, rebuilt in place each frame
+        // ============================================================
+        var VERTS = (MAX_SEG + 1) * 2;
+        var posArr = new Float32Array(VERTS * 3);
+        var nrmArr = new Float32Array(VERTS * 3);
+        var uvArr = new Float32Array(VERTS * 2);
+        var sArr = new Float32Array(VERTS);
+        var idxArr = new Uint16Array(MAX_SEG * 6);
+        for (var iq = 0; iq < MAX_SEG; iq++) {
+          var v0 = iq * 2;
+          idxArr[iq * 6 + 0] = v0;
+          idxArr[iq * 6 + 1] = v0 + 1;
+          idxArr[iq * 6 + 2] = v0 + 2;
+          idxArr[iq * 6 + 3] = v0 + 1;
+          idxArr[iq * 6 + 4] = v0 + 3;
+          idxArr[iq * 6 + 5] = v0 + 2;
+        }
+
+        var ribbonGeo = new THREE.BufferGeometry();
+        ribbonGeo.setAttribute(
+          "position",
+          new THREE.BufferAttribute(posArr, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        ribbonGeo.setAttribute(
+          "normal",
+          new THREE.BufferAttribute(nrmArr, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        ribbonGeo.setAttribute(
+          "uv",
+          new THREE.BufferAttribute(uvArr, 2).setUsage(THREE.DynamicDrawUsage),
+        );
+        ribbonGeo.setAttribute(
+          "aS",
+          new THREE.BufferAttribute(sArr, 1).setUsage(THREE.DynamicDrawUsage),
+        );
+        ribbonGeo.setIndex(new THREE.BufferAttribute(idxArr, 1));
+        ribbonGeo.setDrawRange(0, 0);
+
+        var uTailS = { value: 0 };
+
+        var ribbonMat = new THREE.MeshStandardMaterial({
+          map: atlasTex,
+          roughness: 0.9,
+          metalness: 0,
+          side: THREE.DoubleSide,
+        });
+        ribbonMat.onBeforeCompile = function (shader) {
+          shader.uniforms.uTailS = uTailS;
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              "#include <common>",
+              "#include <common>\nattribute float aS;\nvarying float vS;",
+            )
+            .replace(
+              "#include <begin_vertex>",
+              "#include <begin_vertex>\nvS = aS;",
+            );
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <common>",
+              "#include <common>\nvarying float vS;\nuniform float uTailS;",
+            )
+            .replace(
+              "#include <map_fragment>",
+              "#include <map_fragment>\n" +
+                // tail dissolves into the floor before recycling
+                "float tail = smoothstep(uTailS, uTailS + 3.0, vS);\n" +
+                "diffuseColor.rgb = mix(" +
+                FLOOR_RGB +
+                ", diffuseColor.rgb, tail);",
+            );
+        };
+
+        var ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+        ribbon.frustumCulled = false;
+        ribbon.receiveShadow = true;
+        scene.add(ribbon);
+
+        // ============================================================
+        // Motion solver — heavy spring-damper, real rolling
+        // ============================================================
+        var pos = new THREE.Vector2(0, 0);
+        var vel = new THREE.Vector2(0, 0);
+        var target = new THREE.Vector2(0, 0);
+        var yaw = 0;
+        var sTotal = 0;
+        var REV = 2 * Math.PI * ROLL_R;
+
+        var SPRING = 16.0;
+        var DAMP = 5.4;
+        var MAX_SPEED = 9.0;
+
+        // path history — preallocated ring of plain records
+        var hx = new Float32Array(MAX_PTS);
+        var hz = new Float32Array(MAX_PTS);
+        var hs = new Float32Array(MAX_PTS);
+        var head = -1; // index of newest
+        var count = 0;
+
+        function pushPoint(x, z, s) {
+          head = (head + 1) % MAX_PTS;
+          hx[head] = x;
+          hz[head] = z;
+          hs[head] = s;
+          if (count < MAX_PTS) count++;
+        }
+        function getPt(i, out) {
+          // i = 0 oldest … count-1 newest
+          var k = (head - (count - 1) + i + MAX_PTS * 2) % MAX_PTS;
+          out.x = hx[k];
+          out.z = hz[k];
+          out.s = hs[k];
+        }
+
+        pushPoint(0, 0, 0);
+
+        function angleLerp(a, b, t) {
+          var d = b - a;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          return a + d * t;
+        }
+
+        var _acc = new THREE.Vector2();
+        var _dp = new THREE.Vector2();
+
+        function stepMotion(dt) {
+          _acc.copy(target).sub(pos).multiplyScalar(SPRING);
+          _acc.addScaledVector(vel, -DAMP);
+          vel.addScaledVector(_acc, dt);
+          var sp = vel.length();
+          if (sp > MAX_SPEED) vel.multiplyScalar(MAX_SPEED / sp);
+          _dp.copy(vel).multiplyScalar(dt);
+          var ds = _dp.length();
+          if (ds > 1e-6) {
+            pos.add(_dp);
+            sTotal += ds;
+            if (sp > 0.06) {
+              var ty = Math.atan2(vel.x, vel.y); // vel.y is world z
+              yaw = angleLerp(yaw, ty, 1 - Math.exp(-7 * dt));
+            }
+            // sample the path by distance, never by time
+            var lx = hx[head],
+              lz = hz[head];
+            var ddx = pos.x - lx,
+              ddz = pos.y - lz;
+            if (ddx * ddx + ddz * ddz >= STEP * STEP) {
+              pushPoint(pos.x, pos.y, sTotal);
+            }
+          }
+        }
+
+        // ============================================================
+        // Ribbon rebuild — zero allocations
+        // ============================================================
+        var _a = { x: 0, z: 0, s: 0 };
+        var _b = { x: 0, z: 0, s: 0 };
+        var _c = { x: 0, z: 0, s: 0 };
+        var CURL_MAX = 0.85; // radians of peel wrapped onto the barrel
+
+        function writeVert(vi, x, y, z, nx, ny, nz, u, vv, s) {
+          var p3 = vi * 3,
+            p2 = vi * 2;
+          posArr[p3] = x;
+          posArr[p3 + 1] = y;
+          posArr[p3 + 2] = z;
+          nrmArr[p3] = nx;
+          nrmArr[p3 + 1] = ny;
+          nrmArr[p3 + 2] = nz;
+          uvArr[p2] = u;
+          uvArr[p2 + 1] = vv;
+          sArr[vi] = s;
+        }
+
+        function rebuildRibbon() {
+          var n = count;
+          if (n < 2) {
+            ribbonGeo.setDrawRange(0, 0);
+            return;
+          }
+
+          getPt(0, _a);
+          var sTail = _a.s;
+          var half = RIBBON_W / 2;
+          var vi = 0;
+          var uSpan = CARD_LEN * ATLAS_N;
+          var uBase = Math.floor(sTail / uSpan) * uSpan;
+
+          // smoothed forward from yaw — stable even when velocity crosses zero
+          var fx = Math.sin(yaw),
+            fz = Math.cos(yaw);
+          var sxc = fz,
+            szc = -fx;
+
+          // ---- flat printed trail ----
+          var ptx = 0,
+            ptz = 0,
+            hasPrev = false;
+          for (var i = 0; i < n; i++) {
+            getPt(i, _b);
+            var tx, tz;
+            if (i === n - 1) {
+              // head tangent from smoothed yaw, never from noisy point deltas
+              tx = fx;
+              tz = fz;
+            } else {
+              var i0 = i > 0 ? i - 1 : 0;
+              var i1 = i + 1;
+              getPt(i0, _a);
+              getPt(i1, _c);
+              tx = _c.x - _a.x;
+              tz = _c.z - _a.z;
+            }
+            var tl = Math.sqrt(tx * tx + tz * tz);
+            if (tl < 1e-4) {
+              // degenerate delta at a reversal: reuse the previous tangent
+              tx = hasPrev ? ptx : fx;
+              tz = hasPrev ? ptz : fz;
+            } else {
+              tx /= tl;
+              tz /= tl;
+            }
+            // continuity guard: never let the strip twist through a flip
+            if (hasPrev && tx * ptx + tz * ptz < 0) {
+              tx = ptx;
+              tz = ptz;
+            }
+            ptx = tx;
+            ptz = tz;
+            hasPrev = true;
+            var sx = tz,
+              sz = -tx; // side vector on the floor
+
+            // width taper at the tail so recycling is invisible
+            var w = half;
+            var fromTail = _b.s - sTail;
+            if (fromTail < 3.0) w *= fromTail / 3.0;
+
+            // newer paper lies on top; the head gets an extra ramp so fresh paper
+            // laid over a just-reversed spot never z-fights with itself
+            var y = 0.012 + (_b.s - sTail) * 0.0008;
+            var headBlend = 1 - (sTotal - _b.s) / 1.5;
+            if (headBlend > 0) y += 0.0035 * headBlend;
+            var u = (_b.s - uBase) / uSpan;
+            writeVert(
+              vi++,
+              _b.x + sx * w,
+              y,
+              _b.z + sz * w,
+              0,
+              1,
+              0,
+              u,
+              0,
+              _b.s - uBase,
+            );
+            writeVert(
+              vi++,
+              _b.x - sx * w,
+              y,
+              _b.z - sz * w,
+              0,
+              1,
+              0,
+              u,
+              1,
+              _b.s - uBase,
+            );
+          }
+
+          // ---- bridge to the live contact point ----
+          var yTop = 0.012 + (sTotal - sTail) * 0.0008 + 0.0035;
+          var uC = (sTotal - uBase) / uSpan;
+          writeVert(
+            vi++,
+            pos.x + sxc * half,
+            yTop,
+            pos.y + szc * half,
+            0,
+            1,
+            0,
+            uC,
+            0,
+            sTotal - uBase,
+          );
+          writeVert(
+            vi++,
+            pos.x - sxc * half,
+            yTop,
+            pos.y - szc * half,
+            0,
+            1,
+            0,
+            uC,
+            1,
+            sTotal - uBase,
+          );
+
+          // ---- peel: unprinted paper coming down the front of the barrel ----
+          // this is the physically correct side — the card rolling down the front
+          // is exactly the card the atlas shows there, so the hand-off is seamless
+          for (var j = 1; j <= CURL_SEG; j++) {
+            var th = (j / CURL_SEG) * CURL_MAX;
+            var rr = ROLL_R + 0.012;
+            var px = pos.x + fx * Math.sin(th) * rr;
+            var pz = pos.y + fz * Math.sin(th) * rr;
+            var py = yTop + rr * (1 - Math.cos(th));
+            // paper-face normal, continuous with the flat trail at th = 0
+            var nx = -fx * Math.sin(th),
+              nyv = Math.cos(th),
+              nz = -fz * Math.sin(th);
+            var sHere = sTotal + th * ROLL_R;
+            var uH = (sHere - uBase) / uSpan;
+            writeVert(
+              vi++,
+              px + sxc * half,
+              py,
+              pz + szc * half,
+              nx,
+              nyv,
+              nz,
+              uH,
+              0,
+              sHere - uBase,
+            );
+            writeVert(
+              vi++,
+              px - sxc * half,
+              py,
+              pz - szc * half,
+              nx,
+              nyv,
+              nz,
+              uH,
+              1,
+              sHere - uBase,
+            );
+          }
+
+          var segs = vi / 2 - 1;
+          ribbonGeo.setDrawRange(0, segs * 6);
+          ribbonGeo.attributes.position.needsUpdate = true;
+          ribbonGeo.attributes.normal.needsUpdate = true;
+          ribbonGeo.attributes.uv.needsUpdate = true;
+          ribbonGeo.attributes.aS.needsUpdate = true;
+
+          uTailS.value = sTail - uBase;
+        }
+
+        // ============================================================
+        // Input — pointer on the floor plane, with idle autopilot
+        // ============================================================
+        var raycaster = new THREE.Raycaster();
+        var ndc = new THREE.Vector2(0, 0);
+        var floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        var hit = new THREE.Vector3();
+        var pointerActive = false;
+        var lastPointerT = -1e9;
+        var autoAngle = Math.PI * 0.25;
+
+        function onPointer(e) {
+          var x = e.clientX,
+            y = e.clientY;
+          if (e.touches && e.touches.length) {
+            x = e.touches[0].clientX;
+            y = e.touches[0].clientY;
+          }
+          if (x === undefined) return;
+          ndc.x = (x / window.innerWidth) * 2 - 1;
+          ndc.y = -(y / window.innerHeight) * 2 + 1;
+          pointerActive = true;
+          lastPointerT = performance.now();
+        }
+        window.addEventListener("pointermove", onPointer, { passive: true });
+        window.addEventListener("pointerdown", onPointer, { passive: true });
+        window.addEventListener("touchmove", onPointer, { passive: true });
+        window.addEventListener("touchstart", onPointer, { passive: true });
+
+        // ---- click toggles the roll; drags don't ----
+        var paused = false;
+        var downX = 0,
+          downY = 0,
+          downT = 0;
+        var hintEl = document.getElementById("hint");
+        var hintTextEl = document.getElementById("hintText");
+
+        function showHint(text, autoHide) {
+          gsap.killTweensOf(hintEl);
+          hintEl.style.display = "flex";
+          hintTextEl.innerHTML = text;
+          gsap.to(hintEl, { opacity: 1, duration: 0.35, ease: "power2.out" });
+          if (autoHide) {
+            gsap.to(hintEl, {
+              opacity: 0,
+              duration: 0.8,
+              delay: autoHide,
+              ease: "power2.in",
+              onComplete: function () {
+                hintEl.style.display = "none";
+              },
+            });
+          }
+        }
+
+        function setPaused(p) {
+          paused = p;
+          if (paused) {
+            showHint("Paused &mdash; click anywhere to resume", 0);
+          } else {
+            showHint("Rolling &mdash; click to pause", 2.6);
+          }
+        }
+
+        window.addEventListener(
+          "pointerdown",
+          function (e) {
+            downX = e.clientX;
+            downY = e.clientY;
+            downT = performance.now();
+          },
+          { passive: true },
+        );
+        window.addEventListener(
+          "pointerup",
+          function (e) {
+            var dx = e.clientX - downX,
+              dy = e.clientY - downY;
+            if (dx * dx + dy * dy < 64 && performance.now() - downT < 450) {
+              setPaused(!paused);
+            }
+          },
+          { passive: true },
+        );
+
+        function updateTarget(t, dt) {
+          var idle = performance.now() - lastPointerT > 3200;
+          if (pointerActive && !idle) {
+            raycaster.setFromCamera(ndc, camera);
+            if (raycaster.ray.intersectPlane(floorPlane, hit)) {
+              target.set(hit.x, hit.z);
+            }
+          } else {
+            // wandering autopilot — always in motion, never a straight line
+            autoAngle +=
+              dt *
+              (0.34 +
+                0.5 * Math.sin(t * 0.31) +
+                0.3 * Math.sin(t * 0.113 + 2.1));
+            target.set(
+              pos.x + Math.sin(autoAngle) * 5.2,
+              pos.y + Math.cos(autoAngle) * 5.2,
+            );
+          }
+        }
+
+        // ============================================================
+        // Camera
+        // ============================================================
+        var camOffset = new THREE.Vector3(7.6, 8.8, 10.8);
+        var camPos = new THREE.Vector3();
+        var lookAt = new THREE.Vector3(0, 0.6, 0);
+        var _desired = new THREE.Vector3();
+        var intro = { zoom: 1.5 };
+
+        function updateCamera(dt) {
+          _desired.set(pos.x, 0, pos.y).addScaledVector(camOffset, intro.zoom);
+          var k = 1 - Math.exp(-2.6 * dt);
+          camPos.lerp(_desired, k);
+          _desired.set(pos.x, 0.55, pos.y);
+          lookAt.lerp(_desired, k);
+          camera.position.copy(camPos);
+          camera.lookAt(lookAt);
+        }
+
+        // ============================================================
+        // HUD
+        // ============================================================
+        var counterNum = document.getElementById("counterNum");
+        var meterFill = document.getElementById("meterFill");
+        var lastPrinted = -1;
+
+        function pad4(nv) {
+          var s = String(nv);
+          while (s.length < 4) s = "0" + s;
+          return s;
+        }
+        function updateHUD() {
+          var printed = Math.floor(sTotal / CARD_LEN);
+          if (printed !== lastPrinted) {
+            lastPrinted = printed;
+            counterNum.textContent = pad4(printed);
+          }
+          var frac = (sTotal % CARD_LEN) / CARD_LEN;
+          meterFill.style.width = (frac * 100).toFixed(1) + "%";
+        }
+
+        // ============================================================
+        // Pre-roll: lay a trail before the first frame
+        // ============================================================
+        (function preroll() {
+          var t0 = 0;
+          for (var i = 0; i < 560; i++) {
+            t0 += 1 / 60;
+            autoAngle +=
+              (1 / 60) *
+              (0.34 +
+                0.5 * Math.sin(t0 * 0.31) +
+                0.3 * Math.sin(t0 * 0.113 + 2.1));
+            target.set(
+              pos.x + Math.sin(autoAngle) * 5.2,
+              pos.y + Math.cos(autoAngle) * 5.2,
+            );
+            stepMotion(1 / 60);
+          }
+          camPos.set(pos.x, 0, pos.y).addScaledVector(camOffset, intro.zoom);
+          lookAt.set(pos.x, 0.55, pos.y);
+        })();
+
+        // ============================================================
+        // Main loop — fixed order, no allocations
+        // ============================================================
+        var clock = new THREE.Clock();
+        var elapsed = 0;
+
+        function frame() {
+          requestAnimationFrame(frame);
+          var dt = Math.min(clock.getDelta(), 1 / 30);
+          elapsed += dt;
+
+          if (!paused) {
+            updateTarget(elapsed, dt);
+            stepMotion(dt);
+
+            rollGroup.position.set(pos.x, ROLL_R, pos.y);
+            rollGroup.rotation.y = yaw;
+            spinner.rotation.x = (sTotal % REV) / ROLL_R;
+
+            rebuildRibbon();
+
+            blob.position.set(pos.x, 0.006, pos.y);
+            blob.rotation.z = yaw - Math.PI / 2;
+
+            floor.position.set(pos.x, 0, pos.y);
+            sun.position.set(pos.x + 5, 10, pos.y + 4);
+            sun.target.position.set(pos.x, 0, pos.y);
+          }
+
+          updateCamera(dt);
+          updateHUD();
+
+          renderer.render(scene, camera);
+        }
+
+        window.addEventListener("resize", function () {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Intro
+        gsap.to(intro, { zoom: 1, duration: 2.2, ease: "power3.out" });
+        gsap.to(".hud", {
+          opacity: 1,
+          duration: 1.2,
+          stagger: 0.12,
+          delay: 0.5,
+          ease: "power2.out",
+        });
+        gsap.to(hintEl, {
+          opacity: 0,
+          duration: 0.8,
+          delay: 12,
+          ease: "power2.in",
+          onComplete: function () {
+            hintEl.style.display = "none";
+          },
+        });
+
+        frame();
+      })();
+    </script>
+  </body>
+</html>

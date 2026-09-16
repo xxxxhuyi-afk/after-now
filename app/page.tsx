@@ -5,7 +5,7 @@ import HaloHero from "./halo-hero";
 import ProjectSpotlight from "./project-spotlight";
 import ProjectRedArchive from "./project-red-archive";
 import ProjectVideoScrub from "./project-video-scrub";
-import ShowroomModel from "./showroom-model";
+import Link from "next/link";
 import styles from "./page.module.css";
 
 const projects = [
@@ -41,8 +41,10 @@ const projects = [
 const labNotes = [
   {
     index: "L—01",
-    title: "Generative Form",
-    copy: "让系统自行绘制、变异，并发现它自己的视觉语言。",
+    title: "Paper Playground",
+    subtitle: "纸卷游乐场",
+    copy: "拖动引导纸卷，让图像沿途展开。点击暂停，留住此刻的轨迹。",
+    english: "Guide the roll and let images unfold. Click to pause and hold the trail.",
   },
   {
     index: "L—02",
@@ -209,13 +211,14 @@ export default function Home() {
                 <span>{note.index}</span>
                 <span>Open study</span>
               </div>
-              <h3>{note.title}</h3>
+              <h3>{note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
+              {note.subtitle && <h4 className={styles.labSubtitle}>{note.subtitle}</h4>}
               <p>{note.copy}</p>
+              {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
               <span className={styles.labCardArrow}><Arrow diagonal /></span>
             </article>
           ))}
         </div>
-        <ShowroomModel />
       </section>
 
       <section

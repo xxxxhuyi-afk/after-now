@@ -20,6 +20,34 @@ type Book = {
   heightOffset: string;
 };
 
+type WriterKey = "camus" | "kafka" | "austen" | "hesse";
+
+const writerResults: Record<WriterKey, { name: string; original: string; trait: string; description: string; quote: string; translation: string; bookId: string }> = {
+  camus: { name: "阿尔贝·加缪", original: "Albert Camus", trait: "清醒的反抗者", description: "你看见世界的荒诞，却依然愿意热烈地生活。你相信意义不是被找到的，而是在每一次选择中亲手创造的。", quote: "In the midst of winter, I found there was, within me, an invincible summer.", translation: "在隆冬之中，我终于知道，我身上有一个不可战胜的夏天。", bookId: "invincible-summer" },
+  kafka: { name: "弗兰茨·卡夫卡", original: "Franz Kafka", trait: "敏锐的观察者", description: "你对人与规则之间微妙的错位非常敏感。你常从熟悉生活的裂缝里，看见别人容易忽略的真实。", quote: "What has happened to me?", translation: "我究竟发生了什么？", bookId: "metamorphosis" },
+  austen: { name: "简·奥斯汀", original: "Jane Austen", trait: "克制的洞察者", description: "你擅长阅读关系中的距离、分寸与言外之意。温和与幽默，是你面对复杂人性的锋利方式。", quote: "My good opinion once lost, is lost forever.", translation: "我对一个人的好感一旦失去，便永远失去了。", bookId: "pride-prejudice" },
+  hesse: { name: "赫尔曼·黑塞", original: "Hermann Hesse", trait: "向内的旅行者", description: "你更愿意沿自己的节奏寻找答案。对你来说，成长不是抵达标准答案，而是听见内心不同声音之后仍继续前行。", quote: "Everything comes back again.", translation: "一切都会再次回来。", bookId: "siddhartha" },
+};
+
+const writerQuestions: { question: string; note: string; options: { text: string; writer: WriterKey }[] }[] = [
+  { question: "当世界突然失去确定性，你会？", note: "01 / INSTINCT", options: [
+    { text: "接受荒诞，仍然认真生活", writer: "camus" }, { text: "观察规则为何突然失灵", writer: "kafka" },
+    { text: "先看清每个人真实的态度", writer: "austen" }, { text: "离开噪音，独自寻找答案", writer: "hesse" },
+  ] },
+  { question: "哪一种时刻最接近真实的你？", note: "02 / INNER WORLD", options: [
+    { text: "逆境里依然感到生命炽热", writer: "camus" }, { text: "熟悉的日常忽然显得陌生", writer: "kafka" },
+    { text: "一句礼貌的话露出隐藏锋芒", writer: "austen" }, { text: "漫长旅途中忽然听见自己", writer: "hesse" },
+  ] },
+  { question: "面对一段复杂关系，你更相信？", note: "03 / RELATION", options: [
+    { text: "真诚行动比解释更重要", writer: "camus" }, { text: "沉默里藏着更大的真相", writer: "kafka" },
+    { text: "分寸最能检验一个人", writer: "austen" }, { text: "相遇是彼此成长的镜子", writer: "hesse" },
+  ] },
+  { question: "你希望未来给你什么？", note: "04 / AFTER NOW", options: [
+    { text: "继续热爱世界的勇气", writer: "camus" }, { text: "穿过迷宫后仍保持清醒", writer: "kafka" },
+    { text: "更准确地理解人与自己", writer: "austen" }, { text: "一条真正属于自己的道路", writer: "hesse" },
+  ] },
+];
+
 const books: Book[] = [
   { id: "invincible-summer", title: "不可战胜的夏天", originalTitle: "Il y avait en moi un été invincible", author: "阿尔贝·加缪", year: "1954", quote: "In the midst of winter, I found there was, within me, an invincible summer.", translation: "在隆冬之中，我终于知道，我身上有一个不可战胜的夏天。", sourceUrl: "https://www.camus-society.com/return-to-tipasa-albert-camus.html", color: "#6d2929", ink: "#f1ede3", spriteIndex: 0, heightOffset: "-0.5rem" },
   { id: "the-stranger", title: "局外人", originalTitle: "L'Étranger", author: "阿尔贝·加缪", year: "1942", quote: "I opened myself to the gentle indifference of the world.", translation: "我向世界温柔的冷漠敞开了自己。", sourceUrl: "https://books.google.com/books/about/The_Stranger.html?id=iVV7bKVUNBAC", color: "#e5e0d5", ink: "#171815", spriteIndex: 1, heightOffset: "0.2rem" },
@@ -50,7 +78,48 @@ function artStyle(index: number, atlas: 1 | 2 = 1): CSSProperties {
 
 export default function ArchiveMarquee() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [expandedBook, setExpandedBook] = useState<string | null>(null);
+  const [openingBook, setOpeningBook] = useState<string | null>(null);
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [quizStep, setQuizStep] = useState(0);
+  const [quizScores, setQuizScores] = useState<Record<WriterKey, number>>({ camus: 0, kafka: 0, austen: 0, hesse: 0 });
+  const [quizResult, setQuizResult] = useState<WriterKey | null>(null);
   const wandRef = useRef<HTMLDivElement>(null);
+  const openingTimerRef = useRef<number | null>(null);
+
+  const startQuiz = () => {
+    setQuizStep(0);
+    setQuizScores({ camus: 0, kafka: 0, austen: 0, hesse: 0 });
+    setQuizResult(null);
+    setQuizOpen(true);
+  };
+
+  const answerQuiz = (writer: WriterKey) => {
+    const nextScores = { ...quizScores, [writer]: quizScores[writer] + 1 };
+    setQuizScores(nextScores);
+    if (quizStep < writerQuestions.length - 1) {
+      setQuizStep((step) => step + 1);
+      return;
+    }
+    const order: WriterKey[] = ["camus", "kafka", "austen", "hesse"];
+    setQuizResult(order.reduce((best, key) => nextScores[key] > nextScores[best] ? key : best));
+  };
+
+  useEffect(() => () => {
+    if (openingTimerRef.current !== null) window.clearTimeout(openingTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!quizOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && setQuizOpen(false);
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [quizOpen]);
 
   useEffect(() => {
     if (!selectedBook) return;
@@ -90,10 +159,13 @@ export default function ArchiveMarquee() {
         <div className={styles.intro}>
           <p>从小说、诗歌与思想中，保存那些值得再次读起的句子。</p>
           <span>Curated by After Now</span>
+          <button className={styles.quizLaunch} type="button" onClick={startQuiz}>
+            <span>测试你最像哪位作家</span><b aria-hidden="true">↗</b>
+          </button>
         </div>
       </header>
 
-      <div className={styles.shelf} aria-label="自动重复滚动的 After Now 推荐书架">
+      <div className={styles.shelf} data-paused={expandedBook !== null || selectedBook !== null} aria-label="自动重复滚动的 After Now 推荐书架">
         <div className={styles.marqueeTrack}>
           {[0, 1].map((group) => (
             <div className={styles.books} key={group} aria-hidden={group === 1}>
@@ -102,12 +174,29 @@ export default function ArchiveMarquee() {
                     className={styles.book}
                     type="button"
                     key={`${group}-${cycle}-${book.id}`}
-                    onClick={() => setSelectedBook(book)}
+                    data-expanded={expandedBook === `${group}-${cycle}-${book.id}`}
+                    data-opening={openingBook === `${group}-${cycle}-${book.id}`}
+                    onClick={() => {
+                      const key = `${group}-${cycle}-${book.id}`;
+                      if (window.matchMedia("(pointer: coarse)").matches && expandedBook !== key) {
+                        setExpandedBook(key);
+                        return;
+                      }
+                      setExpandedBook(key);
+                      setOpeningBook(key);
+                      if (openingTimerRef.current !== null) window.clearTimeout(openingTimerRef.current);
+                      openingTimerRef.current = window.setTimeout(() => {
+                        setSelectedBook(book);
+                        setOpeningBook(null);
+                        openingTimerRef.current = null;
+                      }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 720);
+                    }}
                     tabIndex={group === 0 && cycle === 0 ? 0 : -1}
                     aria-label={`暂停并打开《${book.title}》精选段落`}
                     style={{ "--book-color": book.color, "--book-ink": book.ink, "--height-offset": book.heightOffset } as CSSProperties}
                   >
                     <span className={styles.spineCopy}><strong>{book.title}</strong><small>{book.author}</small></span>
+                    <span className={styles.pageBlock} aria-hidden="true"><i /><i /><i /></span>
                     <span className={styles.coverPreview} aria-hidden="true">
                       <span className={styles.coverArt} style={artStyle(book.spriteIndex, book.atlas)} />
                       <span className={styles.coverType}><strong>{book.title}</strong><small>{book.author}</small><i>{book.originalTitle}</i></span>
@@ -119,7 +208,7 @@ export default function ArchiveMarquee() {
         </div>
         <div className={styles.shelfEdge} />
       </div>
-      <p className={styles.hint}>悬停暂停，封面展开后点击阅读</p>
+      <p className={styles.hint}>悬停展开，点击阅读 · 触屏轻点展开，再点阅读{expandedBook && <button type="button" onClick={() => setExpandedBook(null)}>收起封面 / 继续书架 →</button>}</p>
 
       {selectedBook && (
         <div className={styles.backdrop} role="presentation" onMouseDown={() => setSelectedBook(null)}>
@@ -137,6 +226,26 @@ export default function ArchiveMarquee() {
                 <div><p>{selectedBook.translation}</p><a href={selectedBook.sourceUrl} target="_blank" rel="noreferrer">查看文字来源 ↗</a></div>
               </div>
             </article>
+          </section>
+        </div>
+      )}
+
+      {quizOpen && (
+        <div className={styles.quizBackdrop} role="presentation" onMouseDown={() => setQuizOpen(false)}>
+          <section className={styles.quizDialog} role="dialog" aria-modal="true" aria-labelledby="writer-quiz-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header className={styles.quizHeader}><span>After Now / Writer Portrait</span><button type="button" onClick={() => setQuizOpen(false)} aria-label="关闭作家人格测试">×</button></header>
+            {!quizResult ? <>
+              <div className={styles.quizProgress}><span>{writerQuestions[quizStep].note}</span><span>{String(quizStep + 1).padStart(2, "0")} / {String(writerQuestions.length).padStart(2, "0")}</span></div>
+              <h2 id="writer-quiz-title">{writerQuestions[quizStep].question}</h2>
+              <div className={styles.quizOptions}>{writerQuestions[quizStep].options.map((option, index) => <button type="button" key={option.writer} onClick={() => answerQuiz(option.writer)}><span>0{index + 1}</span>{option.text}<i>→</i></button>)}</div>
+            </> : (() => {
+              const result = writerResults[quizResult];
+              return <div className={styles.quizResult}>
+                <p>你的作家人格是</p><h2 id="writer-quiz-title">{result.name}<small>{result.original}</small></h2><strong>{result.trait}</strong><p>{result.description}</p>
+                <blockquote><span>“</span>{result.translation}<small>{result.quote}</small></blockquote>
+                <div><button type="button" onClick={() => { setQuizOpen(false); setSelectedBook(books.find((book) => book.id === result.bookId) ?? null); }}>打开属于你的书 ↗</button><button type="button" onClick={startQuiz}>重新测试</button></div>
+              </div>;
+            })()}
           </section>
         </div>
       )}

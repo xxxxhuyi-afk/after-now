@@ -1316,11 +1316,18 @@
 }
 
 .labCard:last-child { border-right: 0; }
+.labEntryLink { color: inherit; text-decoration: none; }
+.labEntryLink::after { content: ""; position: absolute; inset: 0; }
+.labEntryLink:focus-visible { outline: none; }
+.labEntryLink:focus-visible::after { outline: 2px solid currentColor; outline-offset: -6px; }
 
 .labCard:hover {
-  background: var(--ink);
-  color: var(--bone);
+  background: rgb(8 9 8 / 5%);
+  color: var(--ink);
 }
+.labCard:focus-within, .labCard:active { color: var(--ink); }
+.labSubtitle { margin: -0.6rem 0 1rem; font-size: 1rem; font-weight: 400; }
+.labCard p.labEnglish { margin-top: 0.7rem; padding-bottom: 2.5rem; }
 
 .labCard > div {
   display: flex;
