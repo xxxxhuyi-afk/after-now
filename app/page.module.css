@@ -1317,7 +1317,7 @@
 
 .labCard:last-child { border-right: 0; }
 .labEntryLink { color: inherit; text-decoration: none; }
-.labEntryLink::after { content: ""; position: absolute; inset: 0; }
+.labEntryLink::after { content: ""; position: absolute; inset: 0; z-index: 3; }
 .labEntryLink:focus-visible { outline: none; }
 .labEntryLink:focus-visible::after { outline: 2px solid currentColor; outline-offset: -6px; }
 
@@ -1363,6 +1363,36 @@
 }
 
 .labCard:hover .labCardArrow { transform: rotate(45deg); }
+
+.labCard > .labToolPreview {
+  position: absolute;
+  inset: 3rem 1.4rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  background: var(--acid, #dfff45);
+  border-radius: 0.8rem;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+  z-index: 2;
+  font-family: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.labCard:hover > .labToolPreview,
+.labCard:focus-within > .labToolPreview,
+.labCard > .labToolPreview[data-active="true"] { opacity: 1; transform: translateY(0); }
+@media (hover: none) { .labCard > .labToolPreview { opacity: 1; transform: none; } }
+.labToolViewport { position: relative; width: 100%; aspect-ratio: 1280 / 900; background: #171919; overflow: hidden; border-radius: 0.8rem; container-type: inline-size; }
+.labToolViewport iframe { border: 0; transform-origin: top left; transform: scale(calc(100cqw / 1280px)); pointer-events: none; }
+.labToolCaption { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem 0; }
+.labToolCaption strong { font-size: 1.25rem; font-weight: 400; }
+.labToolCaption span { font-size: 0.8rem; opacity: 0.65; }
+.labToolCaption small { font: 0.65rem "Courier New", monospace; margin-top: 0.3rem; }
+@media (prefers-reduced-motion: reduce) { .labCard > .labToolPreview { transition: none; transform: none; } }
 
 .labPlaceholder {
   max-width: 34rem;

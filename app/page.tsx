@@ -1,7 +1,8 @@
 import ArchiveMarquee from "./archive-marquee";
 import CharacterIntro from "./character-intro";
 import Experience from "./experience";
-import HaloHero from "./halo-hero";
+import WelcomeHero from "./welcome-hero";
+import LabToolPreview from "./lab-tool-preview";
 import ProjectSpotlight from "./project-spotlight";
 import ProjectRedArchive from "./project-red-archive";
 import ProjectVideoScrub from "./project-video-scrub";
@@ -39,6 +40,13 @@ const projects = [
 ];
 
 const labNotes = [
+  {
+    index: "L—05",
+    title: "Zao Zao Zao",
+    subtitle: "小胡造造造",
+    copy: "将文字与图片轮廓转成立体模型，预览、调整并导出。",
+    english: "Turn type and image silhouettes into editable 3D forms.",
+  },
   {
     index: "L—04",
     title: "Image Canvas",
@@ -95,7 +103,48 @@ export default function Home() {
   return (
     <main className={styles.page}>
       <Experience />
-      <HaloHero />
+      <WelcomeHero />
+
+      <section className={styles.lab} id="lab" aria-labelledby="lab-title">
+        <div className={styles.labIntro}>
+          <div className={styles.sectionIndex} data-reveal>
+            <span>03</span>
+            <span>After Now Lab</span>
+          </div>
+          <div className={styles.labTitleWrap} data-reveal>
+            <p className={styles.techType} data-type="实验现场：正在运行">
+              实验现场：正在运行
+            </p>
+            <h2 id="lab-title">LAB<sup>β</sup></h2>
+          </div>
+          <div className={styles.labObject} aria-hidden="true" data-reveal>
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+
+        <div className={styles.labGrid}>
+          {labNotes.map((note) => (
+            <article className={styles.labCard} key={note.index} data-reveal>
+              <div>
+                <span>{note.index}</span>
+                <span>Open study</span>
+              </div>
+              <h3>{note.index === "L—05" ? <Link className={styles.labEntryLink} href="/lab/zaozao">{note.title}</Link> : note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
+              {note.subtitle && <h4 className={styles.labSubtitle}>{note.subtitle}</h4>}
+              <p>{note.copy}</p>
+              {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
+              <span className={styles.labCardArrow}><Arrow diagonal /></span>
+              {note.index === "L—05" && <LabToolPreview />}
+              {note.index === "L—04" && <LabToolPreview tool="canvas" />}
+              {note.index === "L—01" && <LabToolPreview tool="paper" />}
+            </article>
+          ))}
+        </div>
+      </section>
+
+
 
       <div className={styles.motionTicker} aria-hidden="true">
         <div className={styles.motionTickerTrack}>
@@ -109,47 +158,6 @@ export default function Home() {
           <span>Designing What Comes Next</span><i>✦</i>
         </div>
       </div>
-
-      <CharacterIntro />
-
-      <ArchiveMarquee />
-
-      <section
-        className={styles.manifesto}
-        id="manifesto"
-        aria-labelledby="manifesto-title"
-      >
-        <aside className={styles.manifestoRail} data-reveal>
-          <span className={styles.manifestoNumber}>01</span>
-          <span className={styles.manifestoRailLabel}>Manifesto</span>
-          <span className={styles.manifestoRailBrand}>After Now<br />此刻之后</span>
-        </aside>
-        <div className={styles.manifestoMain}>
-          <div className={styles.manifestoStage}>
-            <h2 id="manifesto-title" data-reveal>
-              <span>未来不是<br />抵达的地方。</span>
-              <em>而是此刻<br />正在生成的东西。</em>
-            </h2>
-            <div className={styles.manifestoSignal} data-reveal>
-              <span>Status / Active</span>
-              <span>31.2304° N, 121.4737° E</span>
-            </div>
-          </div>
-          <div className={styles.manifestoDetails} data-reveal>
-            <p>
-              此刻之后，是一个探索品牌、数字体验、空间与新兴技术的独立创意实践。
-              我们让尚未发生的事，先被感知。
-            </p>
-            <p lang="en">
-              The future begins as a feeling.
-            </p>
-          </div>
-          <div className={styles.manifestoFooter} aria-hidden="true">
-            <span>Manifesto / Position 001</span>
-            <span>AfterNow.Studio</span>
-          </div>
-        </div>
-      </section>
 
       <section className={styles.works} id="works" aria-labelledby="works-title">
         <div className={styles.sectionHeading} data-reveal>
@@ -192,39 +200,44 @@ export default function Home() {
         </div>
       </section>
 
-      <section className={styles.lab} id="lab" aria-labelledby="lab-title">
-        <div className={styles.labIntro}>
-          <div className={styles.sectionIndex} data-reveal>
-            <span>03</span>
-            <span>After Now Lab</span>
-          </div>
-          <div className={styles.labTitleWrap} data-reveal>
-            <p className={styles.techType} data-type="实验现场：正在运行">
-              实验现场：正在运行
-            </p>
-            <h2 id="lab-title">LAB<sup>β</sup></h2>
-          </div>
-          <div className={styles.labObject} aria-hidden="true" data-reveal>
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
+      <CharacterIntro />
 
-        <div className={styles.labGrid}>
-          {labNotes.map((note) => (
-            <article className={styles.labCard} key={note.index} data-reveal>
-              <div>
-                <span>{note.index}</span>
-                <span>Open study</span>
-              </div>
-              <h3>{note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
-              {note.subtitle && <h4 className={styles.labSubtitle}>{note.subtitle}</h4>}
-              <p>{note.copy}</p>
-              {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
-              <span className={styles.labCardArrow}><Arrow diagonal /></span>
-            </article>
-          ))}
+      <ArchiveMarquee />
+
+      <section
+        className={styles.manifesto}
+        id="manifesto"
+        aria-labelledby="manifesto-title"
+      >
+        <aside className={styles.manifestoRail} data-reveal>
+          <span className={styles.manifestoNumber}>01</span>
+          <span className={styles.manifestoRailLabel}>Manifesto</span>
+          <span className={styles.manifestoRailBrand}>After Now<br />此刻之后</span>
+        </aside>
+        <div className={styles.manifestoMain}>
+          <div className={styles.manifestoStage}>
+            <h2 id="manifesto-title" data-reveal>
+              <span>未来不是<br />抵达的地方。</span>
+              <em>而是此刻<br />正在生成的东西。</em>
+            </h2>
+            <div className={styles.manifestoSignal} data-reveal>
+              <span>Status / Active</span>
+              <span>31.2304° N, 121.4737° E</span>
+            </div>
+          </div>
+          <div className={styles.manifestoDetails} data-reveal>
+            <p>
+              此刻之后，是一个探索品牌、数字体验、空间与新兴技术的独立创意实践。
+              我们让尚未发生的事，先被感知。
+            </p>
+            <p lang="en">
+              The future begins as a feeling.
+            </p>
+          </div>
+          <div className={styles.manifestoFooter} aria-hidden="true">
+            <span>Manifesto / Position 001</span>
+            <span>AfterNow.Studio</span>
+          </div>
         </div>
       </section>
 

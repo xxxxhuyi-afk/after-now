@@ -1,0 +1,10 @@
+.page{min-height:100dvh;background:#eaece4;color:#18201a;font-family:Arial,"Microsoft YaHei",sans-serif}
+.header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:16px 26px;background:#d9ff52;border-bottom:1px solid #18201a33}
+.header small{font:10px "Courier New",monospace;letter-spacing:.12em}
+.header h1{font-size:24px;font-weight:400;margin:5px 0 0;letter-spacing:-.04em}
+.header h1 span{font-size:13px;margin-left:12px}
+.header nav{display:flex;gap:20px}.header a{color:inherit;font-size:12px;text-decoration:none}
+.notes{padding:10px 26px;font-size:12px;line-height:1.7;border-bottom:1px solid #18201a33}.notes summary{cursor:pointer}.notes p{max-width:900px;margin:8px 0}
+.tool{display:block;width:100%;height:calc(100dvh - 125px);min-height:680px;border:0;background:#05050a}
+.page :focus-visible{outline:2px solid #667d00;outline-offset:3px}
+@media(max-width:700px){.header{padding:14px;align-items:flex-start}.header h1 span{display:block;margin:5px 0 0}.header nav{flex-direction:column;gap:10px}.notes{padding:10px 14px}.tool{height:85dvh;min-height:800px}}
