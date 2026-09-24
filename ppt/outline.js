@@ -1,0 +1,11 @@
+const modePicker=document.querySelector('#modePicker');
+const templateShell=document.querySelector('#outlineShell');
+const editorShell=document.querySelector('#editorShell');
+const grid=document.querySelector('#templateGrid');
+const names=['自定义模板','现代极简','复古简约','高级沉稳','深邃国风','沉稳红色','活力极简','冷静极简','高级水墨','风格模板09','风格模板10','风格模板11','风格模板12','风格模板13','风格模板14','风格模板15'];
+let selected=1;
+grid.innerHTML=names.map((name,i)=>'<button class="templateCard '+(i===1?'selected':'')+'" data-template="'+i+'"><span class="templateThumb"></span><span>'+name+'</span></button>').join('');
+grid.querySelectorAll('.templateCard').forEach(card=>card.onclick=()=>{selected=+card.dataset.template;grid.querySelectorAll('.templateCard').forEach(x=>x.classList.remove('selected'));card.classList.add('selected')});
+document.querySelectorAll('[data-mode]').forEach(btn=>btn.onclick=()=>{modePicker.hidden=true;templateShell.hidden=false});
+document.querySelector('#outlineBack').onclick=()=>{templateShell.hidden=true;modePicker.hidden=false};
+document.querySelector('#outlineNext').onclick=()=>{templateShell.hidden=true;editorShell.hidden=false;document.querySelector('#generate').click()};
