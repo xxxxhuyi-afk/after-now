@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Bundled third-party runtime from the user's desktop tool.
     "public/zaozao/lib/**",
+    "public/hejing/src/vendor/**",
   ]),
 ]);
 

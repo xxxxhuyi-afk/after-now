@@ -6,12 +6,12 @@ import { createPortal } from "react-dom";
 import styles from "./project-red-archive.module.css";
 
 const SCENES = [
-  "/project-03-scene-01.png",
-  "/project-03-scene-02.png",
-  "/project-03-scene-03.png",
-  "/project-03-scene-04.png",
-  "/project-03-scene-05.png",
-  "/project-03-scene-06.png",
+  "/project-03-scene-01.webp",
+  "/project-03-scene-02.webp",
+  "/project-03-scene-03.webp",
+  "/project-03-scene-04.webp",
+  "/project-03-scene-05.webp",
+  "/project-03-scene-06.webp",
 ];
 
 function wrap(value: number, count: number) {
@@ -166,12 +166,12 @@ export default function ProjectRedArchive() {
               ref={videoRef}
               className={styles.film}
               src="/project-03-rooftop.mp4"
-              poster="/project-03-cover.png"
+              poster="/project-03-cover.webp"
               autoPlay
               loop
               playsInline
               controls
-              preload="auto"
+              preload="metadata"
             />
             <div className={styles.filmMeta}>
               <span>天台跃下片尾.mp4</span>
@@ -251,7 +251,7 @@ export default function ProjectRedArchive() {
     <>
       <button className={styles.preview} type="button" onClick={() => setOpen(true)}>
         <Image
-          src="/project-03-cover.png"
+          src="/project-03-cover.webp"
           alt="打开 After Now 影像作品"
           fill
           sizes="(max-width: 900px) 100vw, 75vw"

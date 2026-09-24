@@ -1347,6 +1347,8 @@
   line-height: 0.98;
 }
 
+.labCardImage { display: block; width: calc(100% + 2.8rem); height: 14rem; margin: 1rem -1.4rem -5rem; object-fit: cover; object-position: center; border-bottom: 1px solid rgb(8 9 8 / 25%); }
+
 .labCard p {
   max-width: 19rem;
   margin: 0;
@@ -1445,6 +1447,9 @@
   gap: 1rem;
   align-items: center;
   min-height: 8rem;
+  padding-inline: 1.2rem;
+  background: var(--acid);
+  color: var(--ink);
   border-bottom: 1px solid rgb(233 230 220 / 25%);
   transition:
     padding 450ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -1453,11 +1458,11 @@
 
 .journalEntry:hover {
   padding: 0 1.2rem;
-  color: var(--acid);
+  color: var(--ink);
 }
 
 .journalEntry > span {
-  color: rgb(233 230 220 / 42%);
+  color: rgb(8 9 8 / 58%);
   font-family: "Courier New", monospace;
   font-size: 0.53rem;
   letter-spacing: 0.08em;
@@ -1954,6 +1959,9 @@
 .project:hover, .labCard:hover, .journalEntry:hover { transform: translateY(-6px); border-color: var(--acid); background: rgba(217, 255, 82, 0.05); }
 .projectVisual { min-height: 28rem; }
 @media (max-width: 700px) { .heroTitle { font-size: clamp(4.5rem, 24vw, 8rem); } .projectVisual { min-height: 18rem; } .navigation a { padding: 0.4rem 0.55rem; } }
+
+/* The Lab canvas is intentionally full-bleed, like the reference layout. */
+.lab { width: 100%; max-width: none; box-sizing: border-box; margin-inline: 0; }
 
 /* Hero cover 2026 — a restrained editorial stage built around one character. */
 .siteHeader {

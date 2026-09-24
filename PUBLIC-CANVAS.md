@@ -10,7 +10,7 @@ In Authentication enable Email login and **Confirm email**. Set Site URL to your
 
 ## 2. Vercel Production environment variables
 
-Keep `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. Add:
+Keep `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. The online canvas uses Cloudflare Workers AI's `@cf/black-forest-labs/flux-2-klein-4b` model. Add:
 
 - `SUPABASE_URL`: Project URL.
 - `SUPABASE_ANON_KEY`: legacy anon API key (not service role).
@@ -18,13 +18,13 @@ Keep `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. Add:
 - `IMAGE_CANVAS_USER_DAILY_LIMIT`: `3`.
 - `IMAGE_CANVAS_GLOBAL_DAILY_LIMIT`: `30`.
 
-The 3-per-user / 30-global values are conservative experiment limits, not a guarantee that all 30 requests fit a provider's free allocation. Keep Cloudflare Workers Free if you want provider over-quota requests to stop rather than incur paid overages. Limits measure model-call attempts, including failed/timed-out calls because a timeout may still consume provider compute. Validation/auth failures do not count. Quota database failures block generation (fail closed).
+The 3-per-user / 30-global values are conservative experiment limits, not a guarantee that all 30 requests fit Cloudflare's free daily allocation. Workers AI's Free plan currently includes 10,000 Neurons per day; when exhausted, provider calls stop until the daily reset. Check Cloudflare's current pricing before opening the canvas broadly. Limits measure model-call attempts, including failed/timed-out calls because a timeout may still consume provider compute. Validation/auth failures do not count. Quota database failures block generation (fail closed).
 
 Upload new app files and SQL/docs to the existing repository at their original paths, then redeploy after configuring variables. If auth/database are not connected, import/draft tools still work but image generation is disabled.
 
 ## 3. Verification before sharing
 
-- Register and verify email; log in; refresh; generate an image.
+- Register and verify email; log in; refresh; generate an image using the Cloudflare FLUX.2 Klein model.
 - Session is an HttpOnly, Secure production, SameSite Strict cookie; expires after at most one hour. Log in again after expiry. No automatic token refresh or password recovery UI in this version.
 - Log out and confirm generation is blocked. Old shared passphrase must not work.
 - Set user cap to 1, redeploy, and try two requests. Only one may reach Cloudflare.

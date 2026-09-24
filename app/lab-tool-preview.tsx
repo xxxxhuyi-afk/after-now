@@ -7,6 +7,7 @@ const tools = {
   zaozao: { src: "/zaozao/index.html", title: "小胡造造造", description: "文字与图像 → 立体模型" },
   canvas: { src: "/lab/image-canvas", title: "生图画布", description: "生成图像 · 自由排列 · 保存创作" },
   paper: { src: "/lab/generative-form", title: "纸卷游乐场", description: "拖动纸卷，让图像沿途展开" },
+  hejing: { src: "/lab/hejing", title: "合境 · 三维空间组合", description: "组合一个可探索的三维展览空间" },
 };
 
 export default function LabToolPreview({ tool = "zaozao" }: { tool?: keyof typeof tools }) {

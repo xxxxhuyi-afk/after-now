@@ -41,6 +41,20 @@ const projects = [
 
 const labNotes = [
   {
+    index: "L—07",
+    title: "PPT Optimizer",
+    subtitle: "PPT 优化工作台",
+    copy: "选择视觉方向，整理内容结构，生成一套可继续编辑的演示预览。",
+    english: "Shape a clearer deck from your content and references.",
+  },
+  {
+    index: "L—06",
+    title: "Hejing Space",
+    subtitle: "合境 · 三维空间组合",
+    copy: "从参考图和空间构件出发，组合一个可探索的三维展览空间。",
+    english: "Compose an explorable exhibition space from spatial references.",
+  },
+  {
     index: "L—05",
     title: "Zao Zao Zao",
     subtitle: "小胡造造造",
@@ -131,11 +145,12 @@ export default function Home() {
                 <span>{note.index}</span>
                 <span>Open study</span>
               </div>
-              <h3>{note.index === "L—05" ? <Link className={styles.labEntryLink} href="/lab/zaozao">{note.title}</Link> : note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
+              <h3>{note.index === "L—07" ? <Link className={styles.labEntryLink} href="/lab/ppt">{note.title}</Link> : note.index === "L—06" ? <Link className={styles.labEntryLink} href="/lab/hejing">{note.title}</Link> : note.index === "L—05" ? <Link className={styles.labEntryLink} href="/lab/zaozao">{note.title}</Link> : note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
               {note.subtitle && <h4 className={styles.labSubtitle}>{note.subtitle}</h4>}
               <p>{note.copy}</p>
               {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
               <span className={styles.labCardArrow}><Arrow diagonal /></span>
+              {note.index === "L—06" && <LabToolPreview tool="hejing" />}
               {note.index === "L—05" && <LabToolPreview />}
               {note.index === "L—04" && <LabToolPreview tool="canvas" />}
               {note.index === "L—01" && <LabToolPreview tool="paper" />}

@@ -96,7 +96,7 @@ export default function ProjectVideoScrub() {
         src={BACKGROUND_VIDEO}
         muted
         playsInline
-        preload="auto"
+        preload="metadata"
       />
     </div>
   );

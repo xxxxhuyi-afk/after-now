@@ -1,0 +1,4 @@
+.page { min-height: 100svh; background: #eeeae2; color: #17191b; }
+.header { display:flex; justify-content:space-between; align-items:center; padding:1rem clamp(1rem,4vw,4rem); border-bottom:1px solid rgb(23 25 27 / 20%); font:0.7rem "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
+.frameWrap { min-height:calc(100svh - 3.5rem); padding:clamp(.5rem,2vw,2rem); }
+.frame { display:block; width:100%; min-height:calc(100svh - 6rem); border:1px solid rgb(23 25 27 / 20%); background:#eeeae2; }

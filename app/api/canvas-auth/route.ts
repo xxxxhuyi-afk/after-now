@@ -4,6 +4,13 @@ import { authConfig, canvasQuota, getCanvasUser, sameOrigin, sessionCookie } fro
 export const runtime = "nodejs";
 function json(data: unknown, status = 200) { return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } }); }
 export async function GET() {
+  if (process.env.IMAGE_CANVAS_PROVIDER === "local") {
+    try {
+      const response = await fetch("http://127.0.0.1:8765/health", { cache: "no-store", signal: AbortSignal.timeout(1500) });
+      const service = await response.json();
+      return json({ configured: true, local: true, serviceAvailable: response.ok, modelLoaded: Boolean(service.model_loaded), user: null, quota: null });
+    } catch { return json({ configured: true, local: true, serviceAvailable: false, modelLoaded: false, user: null, quota: null }); }
+  }
   if (!authConfig()) return json({ configured: false, user: null });
   try { const user = await getCanvasUser(); return json({ configured: true, user, quota: user ? await canvasQuota(user.id) : null }); }
   catch { return json({ error: "账号或次数记录暂时无法读取，请稍后重试。" }, 503); }
