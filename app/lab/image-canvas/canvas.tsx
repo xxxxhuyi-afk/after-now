@@ -5,9 +5,13 @@ import styles from "./canvas.module.css";
 
 type Item = { id: string; kind: "prompt" | "image"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; sources?: string[]; pending?: boolean; aspectRatio?: string };
 type Viewport = { x: number; y: number; zoom: number };
+type Edge = { sourceId: string; targetId: string; kind: "from" | "reference" };
+type CanvasMenu = { x: number; y: number; target: { kind: "canvas" } | { kind: "node"; id: string } | { kind: "edge"; edge: Edge } };
+type ConnectionMenu = { sourceId: string; x: number; y: number; worldX: number; worldY: number };
 type Action =
   | { kind: "pan"; pointer: number; startX: number; startY: number; viewX: number; viewY: number }
-  | { kind: "node"; pointer: number; id: string; startX: number; startY: number; nodeX: number; nodeY: number }
+  | { kind: "node"; pointer: number; startX: number; startY: number; positions: Record<string, { x: number; y: number }>; moved: boolean }
+  | { kind: "marquee"; pointer: number; startX: number; startY: number; additive: boolean }
   | { kind: "connect"; pointer: number; id: string };
 const storageKey = "after-now-image-canvas-v2";
 const initialPrompt = "一座安静的湖畔未来建筑，清晨薄雾，极简建筑摄影";
@@ -35,6 +39,9 @@ const referenceDataUrl = async (src: string) => {
 export default function Canvas() {
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [marquee, setMarquee] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [prompt, setPrompt] = useState("");
   const [assistantText, setAssistantText] = useState("");
   const [ratio, setRatio] = useState("16:9");
@@ -48,13 +55,16 @@ export default function Canvas() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("正在读取账号…");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("拖动画布中的节点，滚轮缩放；选中描述节点后可开始生图。");
+  const [message, setMessage] = useState("空白处拖出选框；拖动选中节点可一起移动，按住空格拖动画布。");
   const [view, setView] = useState<Viewport>({ x: 70, y: 54, zoom: 0.88 });
   const [ready, setReady] = useState(false);
   const [connectPoint, setConnectPoint] = useState<{ x: number; y: number; id: string } | null>(null);
   const [showNodeMenu, setShowNodeMenu] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<CanvasMenu | null>(null);
+  const [connectionMenu, setConnectionMenu] = useState<ConnectionMenu | null>(null);
   const pointerAction = useRef<Action | null>(null);
+  const spaceHeld = useRef(false);
+  const dragStartItems = useRef<Item[] | null>(null);
   const intentionallyEmpty = useRef(false);
   const undoStack = useRef<Item[][]>([]);
   const redoStack = useRef<Item[][]>([]);
@@ -123,16 +133,27 @@ export default function Canvas() {
     redoStack.current = [];
   }, [items, ready]);
   useEffect(() => {
-    const dismiss = (event: globalThis.PointerEvent) => { if (!(event.target as HTMLElement).closest("[data-canvas-context-menu]")) setContextMenu(null); };
+    const dismiss = (event: globalThis.PointerEvent) => { if (!(event.target as HTMLElement).closest("[data-canvas-context-menu]")) setContextMenu(null); if (!(event.target as HTMLElement).closest("[data-connection-menu]")) setConnectionMenu(null); };
     const keys = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setContextMenu(null);
+      if (event.key === "Escape") { setContextMenu(null); setConnectionMenu(null); }
+      if (event.code === "Space" && !(event.target as HTMLElement).closest("textarea,input,[contenteditable='true']")) { spaceHeld.current = true; event.preventDefault(); }
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedEdge && !(event.target as HTMLElement).closest("textarea,input,[contenteditable='true']")) {
+        event.preventDefault(); disconnectEdge(selectedEdge); return;
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && !(event.target as HTMLElement).closest("textarea,input,[contenteditable='true']") && selectedIds.length) {
+        event.preventDefault(); const ids = new Set(selectedIds);
+        setItems((all) => { const next = all.filter((item) => !ids.has(item.id)).map((item) => ({ ...item, ...(item.from && ids.has(item.from) ? { from: undefined } : {}), ...(item.sources ? { sources: item.sources.filter((id) => !ids.has(id)) } : {}) })); intentionallyEmpty.current = next.length === 0; return next; });
+        setSelectedIds([]); setSelected(null); setMessage(`已删除 ${ids.size} 个选中节点。`);
+      }
       if ((event.ctrlKey || event.metaKey) && !(event.target as HTMLElement).closest("textarea,input,[contenteditable='true']")) {
         if (event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
         if (event.key.toLowerCase() === "v") { event.preventDefault(); void pasteFromClipboard(); }
       }
     };
-    window.addEventListener("pointerdown", dismiss); window.addEventListener("keydown", keys);
-    return () => { window.removeEventListener("pointerdown", dismiss); window.removeEventListener("keydown", keys); };
+    const keyUp = (event: KeyboardEvent) => { if (event.code === "Space") spaceHeld.current = false; };
+    const blur = () => { spaceHeld.current = false; };
+    window.addEventListener("pointerdown", dismiss); window.addEventListener("keydown", keys); window.addEventListener("keyup", keyUp); window.addEventListener("blur", blur);
+    return () => { window.removeEventListener("pointerdown", dismiss); window.removeEventListener("keydown", keys); window.removeEventListener("keyup", keyUp); window.removeEventListener("blur", blur); };
   });
 
   const current = items.find((item) => item.id === selected) ?? null;
@@ -143,7 +164,7 @@ export default function Canvas() {
     const id = crypto.randomUUID();
     const promptNode = kind === "prompt" ? null : currentPromptNode;
     const next: Item = { id, kind, prompt: kind === "prompt" ? "" : "等待生成图片", x: 240 + (items.length % 3) * 70, y: 560 + (items.length % 3) * 70, width: kind === "prompt" ? 310 : 330, ...(promptNode ? { from: promptNode.id } : {}), ...(kind === "image" ? { pending: true, aspectRatio: ratio.replace(":", " / ") } : {}) };
-    intentionallyEmpty.current = false; setItems((all) => [...all, next]); setSelected(id); setShowNodeMenu(false);
+    intentionallyEmpty.current = false; setItems((all) => [...all, next]); setSelected(id); setSelectedIds([id]); setShowNodeMenu(false);
     setMessage(kind === "prompt" ? "新描述节点已添加。" : "图片节点已添加，可以运行生成。");
   };
   const undo = () => { const previous = undoStack.current.pop(); if (!previous) { setMessage("没有可撤销的操作。"); return; } redoStack.current.push(items); historyMove.current = true; previousItems.current = previous; intentionallyEmpty.current = previous.length === 0; setItems(previous); setMessage("已撤销。按 Ctrl+Shift+Z 可重做。"); };
@@ -151,7 +172,7 @@ export default function Canvas() {
   const addImage = (src: string, description: string, from?: string, aspectRatio?: string) => {
     const id = crypto.randomUUID();
     const node: Item = { id, kind: "image", src, prompt: description, x: 1120 + (items.filter((item) => item.kind === "image").length % 2) * 370, y: 190 + Math.floor(items.filter((item) => item.kind === "image").length / 2) * 360, width: 330, ...(from ? { from } : {}), ...(aspectRatio ? { aspectRatio } : {}) };
-    intentionallyEmpty.current = false; setItems((previous) => [...previous, node]); setSelected(id);
+    intentionallyEmpty.current = false; setItems((previous) => [...previous, node]); setSelected(id); setSelectedIds([id]);
   };
   const generate = async (sourceId?: string) => {
     const source = sourceId ? items.find((item) => item.id === sourceId && item.kind === "prompt") : currentPromptNode;
@@ -189,30 +210,69 @@ export default function Canvas() {
         if (type) { const blob = await entry.getType(type); const reader = new FileReader(); reader.onload = () => importImage(new File([blob], `clipboard.${type.split("/")[1]}`, { type })); reader.readAsDataURL(blob); setContextMenu(null); return; }
       }
       const text = await navigator.clipboard.readText();
-      if (text.trim()) { const id = crypto.randomUUID(); const node: Item = { id, kind: "prompt", prompt: text.trim(), x: 260, y: 250, width: 310 }; setItems((all) => [...all, node]); setSelected(id); setMessage("剪贴板文字已作为描述节点添加。"); }
+      if (text.trim()) { const id = crypto.randomUUID(); const node: Item = { id, kind: "prompt", prompt: text.trim(), x: 260, y: 250, width: 310 }; setItems((all) => [...all, node]); setSelected(id); setSelectedIds([id]); setMessage("剪贴板文字已作为描述节点添加。"); }
       else setMessage("剪贴板里没有可粘贴的文字或图片。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "读取剪贴板失败，请尝试 Ctrl+V。"); }
     setContextMenu(null);
   };
   const beginNodeDrag = (event: PointerEvent<HTMLElement>, item: Item) => {
-    if ((event.target as HTMLElement).closest("button,textarea,input,select,a")) return;
-    event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); setSelected(item.id);
-    pointerAction.current = { kind: "node", pointer: event.pointerId, id: item.id, startX: event.clientX, startY: event.clientY, nodeX: item.x, nodeY: item.y };
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button,textarea,input,select,a")) return;
+    event.preventDefault(); event.stopPropagation(); viewportRef.current?.setPointerCapture(event.pointerId);
+    setSelectedEdge(null);
+    if (spaceHeld.current) { pointerAction.current = { kind: "pan", pointer: event.pointerId, startX: event.clientX, startY: event.clientY, viewX: view.x, viewY: view.y }; return; }
+    const ids = event.shiftKey ? (selectedIds.includes(item.id) ? selectedIds.filter((id) => id !== item.id) : [...selectedIds, item.id]) : selectedIds.includes(item.id) ? selectedIds : [item.id];
+    setSelectedIds(ids); setSelected(ids.includes(item.id) ? item.id : ids[0] ?? null);
+    if (!ids.includes(item.id)) return;
+    dragStartItems.current = items;
+    pointerAction.current = { kind: "node", pointer: event.pointerId, startX: event.clientX, startY: event.clientY, positions: Object.fromEntries(items.filter((node) => ids.includes(node.id)).map((node) => [node.id, { x: node.x, y: node.y }])), moved: false };
   };
   const beginPan = (event: PointerEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest("button,.canvasNode,.nodeMenu,.zoomControls")) return;
+    if ((event.target as HTMLElement).closest("button,textarea,input,select,a,[data-node-type],[data-edge-source],.nodeMenu,.zoomControls")) return;
+    if (event.button !== 0 && event.button !== 1) return;
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    pointerAction.current = { kind: "pan", pointer: event.pointerId, startX: event.clientX, startY: event.clientY, viewX: view.x, viewY: view.y };
-    setSelected(null);
+    if (event.button === 1 || spaceHeld.current) {
+      event.preventDefault(); pointerAction.current = { kind: "pan", pointer: event.pointerId, startX: event.clientX, startY: event.clientY, viewX: view.x, viewY: view.y };
+    } else {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const startX = event.clientX - rect.left, startY = event.clientY - rect.top;
+      pointerAction.current = { kind: "marquee", pointer: event.pointerId, startX, startY, additive: event.shiftKey };
+      setMarquee({ x: startX, y: startY, width: 0, height: 0 });
+      if (!event.shiftKey) { setSelectedIds([]); setSelected(null); }
+      setSelectedEdge(null);
+    }
   };
   const handleMove = (event: PointerEvent<HTMLElement>) => {
     const action = pointerAction.current; if (!action || action.pointer !== event.pointerId) return;
     if (action.kind === "pan") setView((old) => ({ ...old, x: action.viewX + event.clientX - action.startX, y: action.viewY + event.clientY - action.startY }));
-    if (action.kind === "node") setItems((all) => all.map((item) => item.id === action.id ? { ...item, x: action.nodeX + (event.clientX - action.startX) / view.zoom, y: action.nodeY + (event.clientY - action.startY) / view.zoom } : item));
+    if (action.kind === "node") {
+      if (Math.abs(event.clientX - action.startX) + Math.abs(event.clientY - action.startY) < 3 && !action.moved) return;
+      action.moved = true; historyMove.current = true;
+      setItems((all) => all.map((item) => action.positions[item.id] ? { ...item, x: action.positions[item.id].x + (event.clientX - action.startX) / view.zoom, y: action.positions[item.id].y + (event.clientY - action.startY) / view.zoom } : item));
+    }
+    if (action.kind === "marquee") { const rect = viewportRef.current?.getBoundingClientRect(); if (rect) { const x = event.clientX - rect.left, y = event.clientY - rect.top; setMarquee({ x: Math.min(action.startX, x), y: Math.min(action.startY, y), width: Math.abs(x - action.startX), height: Math.abs(y - action.startY) }); } }
     if (action.kind === "connect") { const rect = viewportRef.current?.getBoundingClientRect(); if (rect) setConnectPoint({ id: action.id, x: (event.clientX - rect.left - view.x) / view.zoom, y: (event.clientY - rect.top - view.y) / view.zoom }); }
   };
   const handleUp = (event: PointerEvent<HTMLElement>) => {
     const action = pointerAction.current; if (!action || action.pointer !== event.pointerId) return;
+    if (action.kind === "node" && action.moved && dragStartItems.current) {
+      undoStack.current = [...undoStack.current.slice(-39), dragStartItems.current]; redoStack.current = []; setMessage(`${Object.keys(action.positions).length} 个节点已移动。`);
+    }
+    dragStartItems.current = null;
+    if (action.kind === "marquee") {
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (rect) {
+        const endX = event.clientX - rect.left, endY = event.clientY - rect.top;
+        const left = Math.min(action.startX, endX) + rect.left, right = Math.max(action.startX, endX) + rect.left;
+        const top = Math.min(action.startY, endY) + rect.top, bottom = Math.max(action.startY, endY) + rect.top;
+        if (right - left > 4 && bottom - top > 4) {
+          const matched = Array.from(viewportRef.current?.querySelectorAll<HTMLElement>("[data-node-type]") ?? []).filter((element) => { const box = element.getBoundingClientRect(); return box.left < right && box.right > left && box.top < bottom && box.bottom > top; }).map((element) => element.dataset.nodeId!).filter(Boolean);
+          const next = action.additive ? [...new Set([...selectedIds, ...matched])] : matched;
+          setSelectedIds(next); setSelected(next[0] ?? null); setMessage(`已选中 ${next.length} 个节点。拖动其中一个即可一起移动。`);
+        }
+      }
+      setMarquee(null);
+    }
     if (action.kind === "connect") {
       const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-node-id][data-port='input']") as HTMLElement | null;
       const targetId = target?.dataset.nodeId;
@@ -223,21 +283,29 @@ export default function Canvas() {
           const sources = targetNode.sources ?? [];
           if (sources.includes(sourceNode.id)) setMessage("这张参考图已经连接到描述节点。");
           else if (sources.length >= 4) setMessage("每个描述节点最多连接 4 张参考图。");
-          else { setItems((all) => all.map((item) => item.id === targetId ? { ...item, sources: [...sources, sourceNode.id] } : item)); setSelected(targetId); setMessage(`已加入第 ${sources.length + 1} 张参考图。请描述如何融合，再点击生成图片。`); }
+          else { setItems((all) => all.map((item) => item.id === targetId ? { ...item, sources: [...sources, sourceNode.id] } : item)); setSelected(targetId); setSelectedIds([targetId]); setMessage(`已加入第 ${sources.length + 1} 张参考图。请描述如何融合，再点击生成图片。`); }
         } else if (sourceNode?.kind === "image" && sourceNode.src && targetNode?.kind === "image" && targetNode.src) {
           const id = crypto.randomUUID();
           const newPrompt: Item = { id, kind: "prompt", prompt: "以图1的空间布局与图2的建筑和材质为参考，融合生成一个完整、连贯的空间场景。", x: Math.max(sourceNode.x + sourceNode.width, targetNode.x + targetNode.width) + 100, y: Math.min(sourceNode.y, targetNode.y), width: 310, sources: [sourceNode.id, targetNode.id] };
-          setItems((all) => [...all, newPrompt]); setSelected(id); setMessage("两张图片已连接到融合描述节点。修改要求后点击生成图片。");
+          setItems((all) => [...all, newPrompt]); setSelected(id); setSelectedIds([id]); setMessage("两张图片已连接到融合描述节点。修改要求后点击生成图片。");
           const rect = viewportRef.current?.getBoundingClientRect();
           if (rect) setView((old) => ({ ...old, x: rect.width / 2 - (newPrompt.x + 155) * old.zoom, y: rect.height / 2 - (newPrompt.y + 120) * old.zoom }));
         } else { setItems((all) => all.map((item) => item.id === targetId ? { ...item, from: action.id } : item)); setMessage("画布节点已连接。"); }
+      } else if (!targetId) {
+        const source = items.find((item) => item.id === action.id);
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (source && rect && Math.hypot(event.clientX - (source.x + source.width) * view.zoom - view.x - rect.left, event.clientY - (source.y + nodePortY(source)) * view.zoom - view.y - rect.top) > 30) {
+          const x = event.clientX - rect.left, y = event.clientY - rect.top;
+          setConnectionMenu({ sourceId: source.id, x: clamp(x, 8, Math.max(8, rect.width - 250)), y: clamp(y, 8, Math.max(8, rect.height - 185)), worldX: (x - view.x) / view.zoom, worldY: (y - view.y) / view.zoom });
+          setMessage("选择如何从当前节点继续创作。");
+        }
       }
       setConnectPoint(null);
     }
     pointerAction.current = null;
   };
   const beginConnection = (event: PointerEvent<HTMLButtonElement>, item: Item) => {
-    event.stopPropagation(); viewportRef.current?.setPointerCapture(event.pointerId);
+    event.stopPropagation(); setConnectionMenu(null); viewportRef.current?.setPointerCapture(event.pointerId);
     pointerAction.current = { kind: "connect", pointer: event.pointerId, id: item.id };
     const rect = viewportRef.current?.getBoundingClientRect(); if (rect) setConnectPoint({ id: item.id, x: (event.clientX - rect.left - view.x) / view.zoom, y: (event.clientY - rect.top - view.y) / view.zoom });
   };
@@ -260,9 +328,35 @@ export default function Canvas() {
     setItems((all) => all.map((item) => item.id === currentPromptNode.id ? { ...item, prompt: `${item.prompt}${item.prompt.trim() ? "，" : ""}${addition}` } : item));
     setAssistantText(""); setMessage("补充内容已加入描述节点，请确认后生成。");
   };
-  const removeCurrent = () => { if (!current) return; const next = items.filter((item) => item.id !== current.id).map((item) => ({ ...item, ...(item.from === current.id ? { from: undefined } : {}), ...(item.sources ? { sources: item.sources.filter((id) => id !== current.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); setSelected(null); };
+  const removeCurrent = () => { if (!current) return; const next = items.filter((item) => item.id !== current.id).map((item) => ({ ...item, ...(item.from === current.id ? { from: undefined } : {}), ...(item.sources ? { sources: item.sources.filter((id) => id !== current.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); setSelected(null); setSelectedIds(selectedIds.filter((id) => id !== current.id)); };
+  const disconnectEdge = (edge: Edge) => {
+    setItems((all) => all.map((item) => item.id !== edge.targetId ? item : edge.kind === "from" ? { ...item, from: item.from === edge.sourceId ? undefined : item.from } : { ...item, sources: item.sources?.filter((id) => id !== edge.sourceId) }));
+    setSelectedEdge(null); setContextMenu(null); setMessage("连接线已删除，图片和描述节点仍保留。");
+  };
+  const removeNode = (id: string) => {
+    setItems((all) => { const next = all.filter((item) => item.id !== id).map((item) => ({ ...item, ...(item.from === id ? { from: undefined } : {}), ...(item.sources ? { sources: item.sources.filter((sourceId) => sourceId !== id) } : {}) })); intentionallyEmpty.current = next.length === 0; return next; });
+    setSelectedIds((ids) => ids.filter((value) => value !== id)); if (selected === id) setSelected(null);
+    setContextMenu(null); setMessage("节点已删除。");
+  };
+  const duplicateNode = (id: string) => {
+    const original = items.find((item) => item.id === id); if (!original) return;
+    const copy = { ...original, id: crypto.randomUUID(), x: original.x + 44, y: original.y + 44 };
+    setItems((all) => [...all, copy]); setSelected(copy.id); setSelectedIds([copy.id]); setContextMenu(null); setMessage("节点已复制。");
+  };
+  const continueFromNode = (menu: ConnectionMenu) => {
+    const source = items.find((item) => item.id === menu.sourceId); if (!source) return;
+    const id = crypto.randomUUID();
+    const node: Item = source.kind === "image" && source.src
+      ? { id, kind: "prompt", prompt: "以参考图片的空间布局与建筑细节为基础，生成一张新的画面。", x: menu.worldX, y: menu.worldY, width: 310, sources: [source.id] }
+      : { id, kind: "image", prompt: "等待生成图片", x: menu.worldX, y: menu.worldY, width: 330, from: source.id, pending: true, aspectRatio: ratio.replace(":", " / ") };
+    setItems((all) => [...all, node]); setSelected(id); setSelectedIds([id]); setConnectionMenu(null);
+    setMessage(node.kind === "prompt" ? "已把图片作为参考。编辑描述后点击生成图片。" : "已添加图片结果节点。运行描述即可生成图片。");
+  };
   const saveCanvas = () => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, intentionallyEmpty: intentionallyEmpty.current })); setMessage("画布已保存在当前浏览器。"); } catch { setMessage("浏览器存储空间不足，请下载重要图片后移除部分图片。"); } };
-  const edges = items.flatMap((item) => [...(item.from ? [item.from] : []), ...(item.sources ?? [])].map((sourceId) => ({ target: item, source: items.find((source) => source.id === sourceId) }))).filter((edge): edge is { target: Item; source: Item } => Boolean(edge.source));
+  const edges = items.flatMap((item) => [
+    ...(item.from ? [{ sourceId: item.from, targetId: item.id, kind: "from" as const }] : []),
+    ...(item.sources ?? []).map((sourceId) => ({ sourceId, targetId: item.id, kind: "reference" as const })),
+  ].map((edge) => ({ ...edge, target: item, source: items.find((source) => source.id === edge.sourceId) }))).filter((edge): edge is Edge & { target: Item; source: Item } => Boolean(edge.source));
   const nodePortY = (item: Item) => { if (item.kind === "prompt") return 125; const [width, height] = item.aspectRatio?.split("/").map(Number) ?? [4, 3]; const imageHeight = (item.width - 18) * height / width; return 43 + (item.src ? imageHeight : Math.max(190, imageHeight)) / 2; };
   const pathBetween = (source: Item, target: Item) => { const x1 = source.x + source.width, y1 = source.y + nodePortY(source), x2 = target.x, y2 = target.y + nodePortY(target), bend = Math.max(60, (x2 - x1) * .5); return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`; };
 
@@ -273,7 +367,20 @@ export default function Canvas() {
       <div className={styles.headerActions}><span className={styles.saveState}>● 自动保存</span><button onClick={saveCanvas}>保存画布</button><details className={styles.profile}><summary aria-label={user ? "账号信息" : "登录或注册"}>{user ? user.email.slice(0, 1).toUpperCase() : "访"}</summary><div>{localMode ? <p>{authMessage}</p> : user ? <><p>{user.email}</p><p>今日剩余 {quota?.remaining ?? "—"} / {quota?.userLimit ?? "—"} 次</p><button onClick={() => accountAction("logout")}>退出登录</button></> : <form className={styles.profileForm} onSubmit={(event) => { event.preventDefault(); void accountAction("login"); }}><strong>登录以启用生图</strong><label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" minLength={8} maxLength={128} required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} /></label><div className={styles.authActions}><button disabled={authBusy} type="submit">{authBusy ? "请稍候…" : "登录"}</button><button disabled={authBusy || !email || loginPassword.length < 8} type="button" onClick={() => void accountAction("signup")}>注册</button></div><p role="status">{authMessage}</p></form>}</div></details></div>
     </header>
     <div className={styles.workspace}>
-      <section className={styles.canvasArea} aria-label="无限创作画布" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("textarea,input,button,a")) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ x: Math.min(event.clientX - rect.left, rect.width - 285), y: Math.min(event.clientY - rect.top, rect.height - 365) }); setShowNodeMenu(false); }}>
+      <section className={styles.canvasArea} aria-label="无限创作画布" onContextMenu={(event) => {
+        const target = event.target as Element;
+        if (target.closest("[data-canvas-context-menu],textarea,input,a")) return;
+        const edgeHit = target.closest<SVGPathElement>("[data-edge-source]");
+        const node = target.closest<HTMLElement>("[data-node-type]");
+        if (!edgeHit && !node && target.closest("button")) return;
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        const menuTarget: CanvasMenu["target"] = edgeHit ? { kind: "edge", edge: { sourceId: edgeHit.dataset.edgeSource!, targetId: edgeHit.dataset.edgeTarget!, kind: edgeHit.dataset.edgeKind as Edge["kind"] } } : node ? { kind: "node", id: node.dataset.nodeId! } : { kind: "canvas" };
+        if (menuTarget.kind === "edge") { setSelectedEdge(menuTarget.edge); setSelectedIds([]); setSelected(null); }
+        if (menuTarget.kind === "node") { setSelected(node!.dataset.nodeId!); setSelectedIds([node!.dataset.nodeId!]); setSelectedEdge(null); }
+        if (menuTarget.kind === "canvas") { setSelectedEdge(null); setSelectedIds([]); setSelected(null); }
+        setContextMenu({ x: clamp(event.clientX - rect.left, 8, Math.max(8, rect.width - 302)), y: clamp(event.clientY - rect.top, 8, Math.max(8, rect.height - 230)), target: menuTarget }); setShowNodeMenu(false);
+      }}>
         <nav className={styles.rail} aria-label="画布工具">
           <button aria-label="添加创作节点" title="添加创作节点" onClick={() => setShowNodeMenu((value) => !value)}>＋</button>
           <button aria-label="导入图片" title="导入图片" onClick={() => imageInputRef.current?.click()}>图片</button>
@@ -281,24 +388,34 @@ export default function Canvas() {
           <button aria-label="保存画布" title="保存画布" onClick={saveCanvas}>存档</button>
         </nav>
         {showNodeMenu && <div className={styles.nodeMenu}><small>添加到画布</small><button onClick={() => addNode("prompt")}>文字描述节点</button><button onClick={() => { setShowNodeMenu(false); imageInputRef.current?.click(); }}>导入图片节点</button><button onClick={() => addNode("image")}>空白图片节点</button></div>}
-        {contextMenu && <div className={styles.contextMenu} data-canvas-context-menu style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }} role="menu">
-          <button role="menuitem" onClick={() => { setContextMenu(null); imageInputRef.current?.click(); }}>上传</button>
-          <button role="menuitem" disabled title="资产库功能尚未开放">保存到我的资产</button>
-          <button role="menuitem" onClick={() => { setContextMenu(null); addNode("prompt"); }}>添加节点</button>
-          <hr />
-          <button role="menuitem" disabled={!undoStack.current.length} onClick={undo}>撤销 <kbd>Ctrl Z</kbd></button>
-          <button role="menuitem" disabled={!redoStack.current.length} onClick={redo}>重做 <kbd>Ctrl Shift Z</kbd></button>
-          <hr />
-          <button role="menuitem" onClick={() => void pasteFromClipboard()}>粘贴 <kbd>Ctrl V</kbd></button>
+        {contextMenu && <div className={styles.contextMenu} data-canvas-context-menu style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
+          {contextMenu.target.kind === "edge" ? <><small>连接线</small><button role="menuitem" onClick={() => disconnectEdge(contextMenu.target.kind === "edge" ? contextMenu.target.edge : selectedEdge!)}>断开连接 <kbd>Del</kbd></button></> : contextMenu.target.kind === "node" ? <><small>节点</small><button role="menuitem" onClick={() => contextMenu.target.kind === "node" && duplicateNode(contextMenu.target.id)}>复制节点</button><button role="menuitem" onClick={() => contextMenu.target.kind === "node" && removeNode(contextMenu.target.id)}>删除节点 <kbd>Del</kbd></button></> : <>
+            <button role="menuitem" onClick={() => { setContextMenu(null); imageInputRef.current?.click(); }}>上传图片</button>
+            <button role="menuitem" onClick={() => { setContextMenu(null); addNode("prompt"); }}>添加描述节点</button>
+            <hr />
+            <button role="menuitem" disabled={!undoStack.current.length} onClick={() => { setContextMenu(null); undo(); }}>撤销 <kbd>Ctrl Z</kbd></button>
+            <button role="menuitem" disabled={!redoStack.current.length} onClick={() => { setContextMenu(null); redo(); }}>重做 <kbd>Ctrl Shift Z</kbd></button>
+            <hr />
+            <button role="menuitem" onClick={() => void pasteFromClipboard()}>粘贴 <kbd>Ctrl V</kbd></button>
+          </>}
+        </div>}
+        {connectionMenu && <div className={styles.connectionMenu} data-connection-menu style={{ left: connectionMenu.x, top: connectionMenu.y }} role="menu">
+          <small>从此节点继续创作</small>
+          <button role="menuitem" onClick={() => continueFromNode(connectionMenu)}>{items.find((item) => item.id === connectionMenu.sourceId)?.src ? "参考这张图继续生图" : "创建图片结果节点"} <span>↗</span></button>
+          <button role="menuitem" onClick={() => setConnectionMenu(null)}>取消</button>
         </div>}
         <div ref={viewportRef} className={styles.viewport} onPointerDown={beginPan} onPointerMove={handleMove} onPointerUp={handleUp} onPointerCancel={handleUp} onWheel={handleWheel}>
           <div className={styles.infiniteGrid} />
+          {marquee && <div className={styles.marquee} style={{ left: marquee.x, top: marquee.y, width: marquee.width, height: marquee.height }} />}
           <div className={styles.world} style={{ transform: `translate(${view.x}px,${view.y}px) scale(${view.zoom})` }}>
             <svg className={styles.edges} width="3200" height="2400" aria-hidden="true">
-              {edges.map(({ source, target }) => <path key={`${source.id}-${target.id}`} d={pathBetween(source, target)} />)}
+              {edges.map((edge) => <g key={`${edge.kind}-${edge.sourceId}-${edge.targetId}`}>
+                <path className={selectedEdge?.sourceId === edge.sourceId && selectedEdge?.targetId === edge.targetId && selectedEdge.kind === edge.kind ? styles.selectedEdge : ""} d={pathBetween(edge.source, edge.target)} />
+                <path className={styles.edgeHit} data-edge-source={edge.sourceId} data-edge-target={edge.targetId} data-edge-kind={edge.kind} aria-label="连接线，右键可断开" d={pathBetween(edge.source, edge.target)} onClick={(event) => { event.stopPropagation(); setSelectedEdge(edge); setSelectedIds([]); setSelected(null); }} />
+              </g>)}
               {connectPoint && (() => { const source = items.find((item) => item.id === connectPoint.id); const portY = source ? nodePortY(source) : 0; return source ? <path className={styles.draftEdge} d={`M ${source.x + source.width} ${source.y + portY} C ${source.x + source.width + 80} ${source.y + portY}, ${connectPoint.x - 80} ${connectPoint.y}, ${connectPoint.x} ${connectPoint.y}`} /> : null; })()}
             </svg>
-              {items.map((item) => <article key={item.id} data-node-id={item.id} data-node-type={item.kind} className={`${styles.node} ${item.kind === "prompt" ? styles.promptNode : styles.imageNode} ${selected === item.id ? styles.selectedNode : ""}`} style={{ left: item.x, top: item.y, width: item.width }} onPointerDown={(event) => beginNodeDrag(event, item)}>
+              {items.map((item) => <article key={item.id} data-node-id={item.id} data-node-type={item.kind} className={`${styles.node} ${item.kind === "prompt" ? styles.promptNode : styles.imageNode} ${selectedIds.includes(item.id) ? styles.selectedNode : ""}`} style={{ left: item.x, top: item.y, width: item.width }} onPointerDown={(event) => beginNodeDrag(event, item)}>
               <div className={styles.nodeHeader}><span className={`${styles.nodeTypeDot} ${item.kind === "image" ? styles.imageTypeDot : ""}`} />{item.kind === "prompt" ? "画面描述" : "图像结果"}<span className={styles.nodeStatus}>{item.pending ? "等待生成" : item.src ? "已完成" : "素材"}</span><button className={styles.nodeMore} aria-label="删除此节点" onClick={(event) => { event.stopPropagation(); const next = items.filter((node) => node.id !== item.id).map((node) => ({ ...node, ...(node.from === item.id ? { from: undefined } : {}), ...(node.sources ? { sources: node.sources.filter((id) => id !== item.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); if (selected === item.id) setSelected(null); }}>×</button></div>
               {item.kind === "prompt" ? <div className={styles.promptSurface}><small>IMAGE PROMPT</small>{Boolean(item.sources?.length) && <div className={styles.referenceStrip}>{item.sources?.map((id, index) => { const reference = items.find((node) => node.id === id); return reference?.src ? <span key={id}><img src={reference.src} alt={`参考图 ${index + 1}`} /><b>图{index + 1}</b><button aria-label={`移除参考图 ${index + 1}`} title="取消这张参考图" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setItems((all) => all.map((node) => node.id === item.id ? { ...node, sources: node.sources?.filter((sourceId) => sourceId !== id) } : node)); }}>×</button></span> : null; })}<small>参考图片</small></div>}<textarea aria-label="画面描述" value={item.prompt} placeholder="写下你想生成的画面…" onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setItems((all) => all.map((node) => node.id === item.id ? { ...node, prompt: event.target.value } : node))} /><button onClick={(event) => { event.stopPropagation(); setSelected(item.id); void generate(item.id); }} disabled={busy || !canGenerate}>{busy ? "生成中…" : "生成图片 ↗"}</button></div> : <div className={styles.imageSurface}>
               {item.src ? <img src={item.src} alt={item.prompt || "生成的图像"} draggable={false} style={item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined} onLoad={(event) => { if (!item.aspectRatio) { const value = `${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`; setItems((all) => all.map((node) => node.id === item.id ? { ...node, aspectRatio: value } : node)); } }} /> : <div className={styles.imagePlaceholder} style={{ aspectRatio: item.aspectRatio ?? "4 / 3" }}><span>{item.pending ? "生成结果将出现在这里" : "导入或生成一张图片"}</span></div>}
@@ -314,7 +431,7 @@ export default function Canvas() {
           <button onClick={() => setShowNodeMenu((value) => !value)}><b>＋</b>添加节点</button><i />
           <button onClick={fitView}>整理画布</button><i />
           <button disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? "正在生成…" : "▶ 运行生图"}</button>
-          <span className={styles.toolbarMode}><span className={styles.liveDot} />画布模式</span>
+          <span className={styles.toolbarMode}><span className={styles.liveDot} />拖出选框 · 空格拖动画布</span>
         </div>
         <div className={styles.zoomControls}><button aria-label="放大" onClick={() => zoomBy(1.15)}>＋</button><button aria-label="缩小" onClick={() => zoomBy(.87)}>−</button><button aria-label="适配画布" onClick={fitView}>⌗</button><span>{Math.round(view.zoom * 100)}%</span></div>
         <input ref={imageInputRef} className={styles.hiddenInput} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { importImage(event.target.files?.[0]); event.target.value = ""; }} />
