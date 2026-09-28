@@ -1,1 +1,1 @@
-解压后，把此文件夹里面的 app、public 和配置文件拖到 GitHub 仓库根目录上传，覆盖同名文件。不要上传 zip，不要上传外层文件夹。保留仓库原有 public 里的视频和图片，不能删除整个 public。此包只有本次更新的源码、工具和字体。保留 Vercel 环境变量。若仓库已有 pnpm-lock.yaml，需要移除旧锁文件，并使用 npm ci 安装、npm run build 构建。
+这是已上传 After Now 网站的画布增量更新包。请解压后按相同目录覆盖 GitHub 仓库中的文件，不要直接上传 ZIP 文件。重点更新 app/lab/image-canvas/canvas.tsx 和 canvas.module.css。包含左侧画布/资产/提示词/工作流面板、双图空间重建或溶图入口、节点工具栏和最高 800% 缩放。未包含 .env.local、node_modules、.next 或图片资产。

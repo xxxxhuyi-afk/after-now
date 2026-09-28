@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import Link from "next/link";
+import { BookmarkPlus, Check, Copy, Download, Ellipsis, Expand, FileText, FolderPlus, Grid2X2, Image as ImageIcon, Info, PanelLeftClose, PanelLeftOpen, Paintbrush, Scissors, Search, Share2, Trash2, ZoomIn } from "lucide-react";
 import styles from "./canvas.module.css";
 
 type Item = { id: string; kind: "prompt" | "image"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; sources?: string[]; pending?: boolean; aspectRatio?: string };
@@ -8,6 +9,7 @@ type Viewport = { x: number; y: number; zoom: number };
 type Edge = { sourceId: string; targetId: string; kind: "from" | "reference" };
 type CanvasMenu = { x: number; y: number; target: { kind: "canvas" } | { kind: "node"; id: string } | { kind: "edge"; edge: Edge } };
 type ConnectionMenu = { sourceId: string; x: number; y: number; worldX: number; worldY: number };
+type PromptTemplate = { id: string; title: string; text: string; group: string };
 type Action =
   | { kind: "pan"; pointer: number; startX: number; startY: number; viewX: number; viewY: number }
   | { kind: "node"; pointer: number; startX: number; startY: number; positions: Record<string, { x: number; y: number }>; moved: boolean }
@@ -20,6 +22,13 @@ const starterItems: Item[] = [
   { id: "starter-image", kind: "image", prompt: "等待生成图片", x: 720, y: 210, width: 330, from: "starter-prompt", pending: true, aspectRatio: "16 / 9" },
 ];
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const minZoom = 0.1;
+const maxZoom = 8;
+const starterPrompts: PromptTemplate[] = [
+  { id: "spatial-study", title: "空间概念", group: "空间创作", text: "一处具有清晰动线与光影层次的展览空间，保留建筑结构，真实材质，建筑摄影。" },
+  { id: "material-study", title: "材质探索", group: "空间创作", text: "以参考空间的布局为基础，探索木材、石材与柔和自然光的组合，保持真实尺度。" },
+  { id: "scene-extension", title: "场景延展", group: "图像参考", text: "延续参考图片中的空间结构、透视与主要材质，扩展出新的连续场景。" },
+];
 const referenceDataUrl = async (src: string) => {
   const image = new Image();
   image.src = src;
@@ -41,6 +50,18 @@ export default function Canvas() {
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<"canvas" | "assets" | "prompts" | "workflow">("canvas");
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [workflowSpaceId, setWorkflowSpaceId] = useState("");
+  const [workflowReferenceId, setWorkflowReferenceId] = useState("");
+  const [workflowMode, setWorkflowMode] = useState<"rebuild" | "fusion">("rebuild");
+  const [workflowNote, setWorkflowNote] = useState("");
+  const [savedAssetIds, setSavedAssetIds] = useState<string[]>([]);
+  const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
+  const [toolbarMenu, setToolbarMenu] = useState<"info" | "style" | "crop" | "more" | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [cropRatio, setCropRatio] = useState("1:1");
   const [marquee, setMarquee] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [prompt, setPrompt] = useState("");
   const [assistantText, setAssistantText] = useState("");
@@ -109,7 +130,9 @@ export default function Canvas() {
           setItems(parsed.items.length === 0 && !intentionallyEmpty.current ? starterItems : parsed.items);
         }
         else setItems(starterItems);
-        if (parsed.view && Number.isFinite(parsed.view.zoom)) setView({ x: Number(parsed.view.x) || 0, y: Number(parsed.view.y) || 0, zoom: clamp(parsed.view.zoom, .25, 1.8) });
+        if (parsed.view && Number.isFinite(parsed.view.zoom)) setView({ x: Number(parsed.view.x) || 0, y: Number(parsed.view.y) || 0, zoom: clamp(parsed.view.zoom, minZoom, maxZoom) });
+        if (Array.isArray(parsed.savedAssetIds)) setSavedAssetIds(parsed.savedAssetIds.filter((id: unknown) => typeof id === "string"));
+        if (Array.isArray(parsed.customPrompts)) setCustomPrompts(parsed.customPrompts.filter((item: PromptTemplate) => typeof item.id === "string" && typeof item.title === "string" && typeof item.text === "string"));
       } else {
         const legacy = localStorage.getItem("after-now-image-canvas-v1");
         if (legacy) {
@@ -122,7 +145,7 @@ export default function Canvas() {
     setReady(true);
     return () => controller.abort();
   }, []);
-  useEffect(() => { if (!ready) return; const timer = window.setTimeout(() => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, intentionallyEmpty: intentionallyEmpty.current })); } catch { setMessage("画布内容过多，图片不会自动保存在浏览器；请及时下载重要图片。"); } }, 500); return () => window.clearTimeout(timer); }, [items, view, ratio, ready]);
+  useEffect(() => { if (!ready) return; const timer = window.setTimeout(() => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, savedAssetIds, customPrompts, intentionallyEmpty: intentionallyEmpty.current })); } catch { setMessage("画布内容过多，图片不会自动保存在浏览器；请及时下载重要图片。"); } }, 500); return () => window.clearTimeout(timer); }, [items, view, ratio, savedAssetIds, customPrompts, ready]);
   useEffect(() => {
     if (!ready) return;
     const previous = previousItems.current;
@@ -312,9 +335,9 @@ export default function Canvas() {
   const handleWheel = (event: WheelEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest("textarea,input,select")) return;
     event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); const px = event.clientX - rect.left, py = event.clientY - rect.top;
-    setView((old) => { const zoom = clamp(old.zoom * Math.exp(-event.deltaY * .001), .25, 1.8); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; });
+    setView((old) => { const zoom = clamp(old.zoom * Math.exp(-event.deltaY * .001), minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; });
   };
-  const zoomBy = (factor: number) => setView((old) => { const zoom = clamp(old.zoom * factor, .25, 1.8); return { ...old, zoom, x: old.x - (850 - old.x) * (zoom / old.zoom - 1), y: old.y - (480 - old.y) * (zoom / old.zoom - 1) }; });
+  const zoomBy = (factor: number) => { const rect = viewportRef.current?.getBoundingClientRect(); const px = (rect?.width ?? 900) / 2, py = (rect?.height ?? 650) / 2; setView((old) => { const zoom = clamp(old.zoom * factor, minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; }); };
   const fitView = () => {
     if (!items.length || !viewportRef.current) { setView({ x: 70, y: 54, zoom: .88 }); return; }
     const rect = viewportRef.current.getBoundingClientRect(); const minX = Math.min(...items.map((item) => item.x)), minY = Math.min(...items.map((item) => item.y));
@@ -352,7 +375,84 @@ export default function Canvas() {
     setItems((all) => [...all, node]); setSelected(id); setSelectedIds([id]); setConnectionMenu(null);
     setMessage(node.kind === "prompt" ? "已把图片作为参考。编辑描述后点击生成图片。" : "已添加图片结果节点。运行描述即可生成图片。");
   };
-  const saveCanvas = () => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, intentionallyEmpty: intentionallyEmpty.current })); setMessage("画布已保存在当前浏览器。"); } catch { setMessage("浏览器存储空间不足，请下载重要图片后移除部分图片。"); } };
+  const focusNode = (id: string, zoomTo = false) => {
+    const item = items.find((node) => node.id === id), rect = viewportRef.current?.getBoundingClientRect();
+    if (!item || !rect) return;
+    const zoom = zoomTo ? 2 : Math.max(view.zoom, 0.7);
+    setView({ zoom, x: rect.width / 2 - (item.x + item.width / 2) * zoom, y: rect.height / 2 - (item.y + 130) * zoom });
+    setSelected(id); setSelectedIds([id]); setSelectedEdge(null);
+  };
+  const applyPromptTemplate = (template: PromptTemplate) => {
+    if (current?.kind === "prompt") setItems((all) => all.map((item) => item.id === current.id ? { ...item, prompt: template.text } : item));
+    else { const id = crypto.randomUUID(), node: Item = { id, kind: "prompt", prompt: template.text, x: 260, y: 250 + items.length * 35, width: 310 }; setItems((all) => [...all, node]); setSelected(id); setSelectedIds([id]); }
+    setMessage(`已应用「${template.title}」，可继续修改描述。`);
+  };
+  const saveCurrentPrompt = () => {
+    if (current?.kind !== "prompt" || !current.prompt.trim()) return;
+    const template: PromptTemplate = { id: crypto.randomUUID(), title: current.prompt.trim().slice(0, 18), text: current.prompt.trim(), group: "我的提示词" };
+    setCustomPrompts((all) => [...all.slice(-49), template]); setSidebarTab("prompts"); setSidebarOpen(true); setMessage("描述已加入提示词库。");
+  };
+  const startSpatialWorkflow = () => {
+    const space = items.find((item) => item.id === workflowSpaceId && item.src);
+    const reference = items.find((item) => item.id === workflowReferenceId && item.src);
+    if (!space || !reference || space.id === reference.id) { setMessage("请分别选择两张不同的图片：空间图和参考图。"); return; }
+    const modeText = workflowMode === "fusion"
+      ? "溶图融合：图1是空间图，保留其空间结构、装修风格、配色、材质与原有氛围；将图2参考图的主体与物品自然放入图1空间，统一透视、比例、遮挡、接触阴影和光照，不要贴图式拼接。"
+      : "空间重建：图1空间图只提供房间大小、格局、相机视角、透视及墙地顶和门窗的位置关系，不保留图1的配色、材质、装饰、家具或灯光风格；图2参考图决定全部风格、色彩、材质、光影和物品。在图1的空间尺度中按图2重建完整室内场景，不添加图2没有的大件，保持结构位置、合理接地、遮挡和统一透视。";
+    const promptId = crypto.randomUUID(), outputId = crypto.randomUUID();
+    const right = Math.max(space.x + space.width, reference.x + reference.width);
+    const promptNode: Item = { id: promptId, kind: "prompt", prompt: `${modeText}${workflowNote.trim() ? `\n补充要求：${workflowNote.trim()}` : ""}`, x: right + 110, y: Math.min(space.y, reference.y), width: 340, sources: [space.id, reference.id] };
+    const outputNode: Item = { id: outputId, kind: "image", prompt: "等待空间效果图", x: promptNode.x + 440, y: promptNode.y, width: 330, from: promptId, pending: true, aspectRatio: space.aspectRatio ?? ratio.replace(":", " / ") };
+    const [width, height] = space.aspectRatio?.split("/").map(Number) ?? [];
+    if (width && height) { const choices = ["16:9", "9:16", "4:3", "3:4", "1:1", "3:2", "2:3"]; setRatio(choices.reduce((best, value) => { const [w, h] = value.split(":").map(Number); const [bw, bh] = best.split(":").map(Number); return Math.abs(w / h - width / height) < Math.abs(bw / bh - width / height) ? value : best; })); }
+    setItems((all) => [...all, promptNode, outputNode]); setSelected(promptId); setSelectedIds([promptId]);
+    const rect = viewportRef.current?.getBoundingClientRect(); if (rect) setView((old) => ({ ...old, x: rect.width / 2 - (promptNode.x + 170) * old.zoom, y: rect.height / 2 - (promptNode.y + 130) * old.zoom }));
+    setMessage(`已创建${workflowMode === "fusion" ? "溶图融合" : "空间重建"}工作流。确认描述后点击生成图片。`);
+  };
+  const downloadNode = (item: Item) => {
+    const href = item.src || URL.createObjectURL(new Blob([item.prompt], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = href; link.download = `after-now-${item.kind}-${item.id}.${item.src ? "png" : "txt"}`; link.click();
+    if (!item.src) window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+    setMessage(item.src ? "图片已开始下载。" : "描述文本已开始下载。");
+  };
+  const exportNode = (item: Item) => {
+    const href = URL.createObjectURL(new Blob([JSON.stringify(item, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = href; link.download = `after-now-node-${item.id}.json`; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(href), 1000); setMessage("节点数据已导出。");
+  };
+  const copyNodeContent = async (item: Item) => {
+    try {
+      if (item.src) {
+        const image = new Image(); image.src = item.src; await image.decode();
+        const canvas = document.createElement("canvas"); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d"); if (!context) throw new Error("无法复制图片"); context.drawImage(image, 0, 0);
+        const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("无法复制图片")), "image/png"));
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); setMessage("图片已复制到剪贴板。");
+      } else { await navigator.clipboard.writeText(item.prompt); setMessage("描述已复制到剪贴板。"); }
+    } catch { setMessage("浏览器未允许复制图片，请使用下载按钮。"); }
+  };
+  const cropCurrentImage = async () => {
+    if (!current?.src) return;
+    try {
+      const image = new Image(); image.src = current.src; await image.decode();
+      const [rw, rh] = cropRatio.split(":").map(Number), target = rw / rh;
+      let width = image.naturalWidth, height = image.naturalHeight;
+      if (width / height > target) width = Math.round(height * target); else height = Math.round(width / target);
+      const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+      const context = canvas.getContext("2d"); if (!context) throw new Error();
+      context.drawImage(image, (image.naturalWidth - width) / 2, (image.naturalHeight - height) / 2, width, height, 0, 0, width, height);
+      const id = current.id, src = canvas.toDataURL("image/png");
+      setItems((all) => all.map((item) => item.id === id ? { ...item, src, aspectRatio: `${rw} / ${rh}` } : item));
+      setToolbarMenu(null); setMessage(`图片已居中裁切为 ${cropRatio}；可以用 Ctrl+Z 撤销。`);
+    } catch { setMessage("图片无法裁切，请先下载后重新导入。"); }
+  };
+  const arrangeSelected = () => {
+    const chosen = items.filter((item) => selectedIds.includes(item.id)); if (chosen.length < 2) return;
+    const columns = Math.ceil(Math.sqrt(chosen.length)); const left = Math.min(...chosen.map((item) => item.x)), top = Math.min(...chosen.map((item) => item.y));
+    const positions = new Map(chosen.map((item, index) => [item.id, { x: left + index % columns * 390, y: top + Math.floor(index / columns) * 390 }]));
+    setItems((all) => all.map((item) => positions.has(item.id) ? { ...item, ...positions.get(item.id)! } : item)); setMessage(`${chosen.length} 个节点已排成网格。`);
+  };
+  const saveCanvas = () => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, savedAssetIds, customPrompts, intentionallyEmpty: intentionallyEmpty.current })); setMessage("画布已保存在当前浏览器。"); } catch { setMessage("浏览器存储空间不足，请下载重要图片后移除部分图片。"); } };
   const edges = items.flatMap((item) => [
     ...(item.from ? [{ sourceId: item.from, targetId: item.id, kind: "from" as const }] : []),
     ...(item.sources ?? []).map((sourceId) => ({ sourceId, targetId: item.id, kind: "reference" as const })),
@@ -366,7 +466,18 @@ export default function Canvas() {
       <div className={styles.projectTitle}><span className={styles.liveDot} />图像创作画布 <span className={styles.projectDivider}>/</span> 未命名项目</div>
       <div className={styles.headerActions}><span className={styles.saveState}>● 自动保存</span><button onClick={saveCanvas}>保存画布</button><details className={styles.profile}><summary aria-label={user ? "账号信息" : "登录或注册"}>{user ? user.email.slice(0, 1).toUpperCase() : "访"}</summary><div>{localMode ? <p>{authMessage}</p> : user ? <><p>{user.email}</p><p>今日剩余 {quota?.remaining ?? "—"} / {quota?.userLimit ?? "—"} 次</p><button onClick={() => accountAction("logout")}>退出登录</button></> : <form className={styles.profileForm} onSubmit={(event) => { event.preventDefault(); void accountAction("login"); }}><strong>登录以启用生图</strong><label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" minLength={8} maxLength={128} required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} /></label><div className={styles.authActions}><button disabled={authBusy} type="submit">{authBusy ? "请稍候…" : "登录"}</button><button disabled={authBusy || !email || loginPassword.length < 8} type="button" onClick={() => void accountAction("signup")}>注册</button></div><p role="status">{authMessage}</p></form>}</div></details></div>
     </header>
-    <div className={styles.workspace}>
+    <div className={`${styles.workspace} ${sidebarOpen ? "" : styles.workspaceSidebarClosed}`}>
+      <aside className={`${styles.librarySidebar} ${sidebarOpen ? "" : styles.librarySidebarClosed}`} aria-label="画布资料与工作流">
+        <div className={styles.libraryTop}><strong>{sidebarOpen ? "创作资源" : ""}</strong><button aria-label={sidebarOpen ? "收起左侧面板" : "展开左侧面板"} title={sidebarOpen ? "收起左侧面板" : "展开左侧面板"} onClick={() => setSidebarOpen((value) => !value)}>{sidebarOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}</button></div>
+        {sidebarOpen && <><div className={styles.libraryTabs} role="tablist" aria-label="左侧面板分类">{([['canvas', '画布'], ['assets', '资产'], ['prompts', '提示词'], ['workflow', '工作流']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={sidebarTab === id} className={sidebarTab === id ? styles.libraryTabActive : ""} onClick={() => { setSidebarTab(id); setSidebarSearch(""); }}>{label}</button>)}</div>
+          {sidebarTab !== "workflow" && <label className={styles.librarySearch}><Search size={15} /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder={sidebarTab === "canvas" ? "搜索节点" : sidebarTab === "assets" ? "搜索图片" : "搜索提示词"} /></label>}
+          <div className={styles.libraryScroll}>
+            {sidebarTab === "canvas" && <><div className={styles.librarySectionHeading}><span>画布节点 · {items.length}</span><button onClick={() => addNode("prompt")}>＋</button></div>{items.filter((item) => !sidebarSearch || item.prompt.toLowerCase().includes(sidebarSearch.toLowerCase()) || item.kind.includes(sidebarSearch.toLowerCase())).map((item) => <button className={`${styles.libraryRow} ${selected === item.id ? styles.libraryRowActive : ""}`} key={item.id} onClick={() => focusNode(item.id)}>{item.kind === "image" ? <ImageIcon size={16} /> : <FileText size={16} />}<span><strong>{item.kind === "image" ? "图片" : "描述"}</strong><small>{item.prompt || "未命名节点"}</small></span></button>)}<div className={styles.workflowTeaser}><strong>空间场景工作流</strong><p>指定空间图与参考图，建立双图生图流程。</p><button onClick={() => setSidebarTab("workflow")}>打开工作流 ↗</button></div></>}
+            {sidebarTab === "assets" && <><div className={styles.librarySectionHeading}><span>画布图片 · {items.filter((item) => item.kind === "image" && item.src).length}</span><button onClick={() => imageInputRef.current?.click()}>导入</button></div>{items.filter((item) => item.kind === "image" && item.src && (!sidebarSearch || item.prompt.toLowerCase().includes(sidebarSearch.toLowerCase()))).sort((a, b) => Number(savedAssetIds.includes(b.id)) - Number(savedAssetIds.includes(a.id))).map((item) => <button className={`${styles.libraryRow} ${selected === item.id ? styles.libraryRowActive : ""}`} key={item.id} onClick={() => focusNode(item.id)}><img src={item.src} alt="" /><span><strong>{savedAssetIds.includes(item.id) ? "★ " : ""}{item.prompt || "未命名图片"}</strong><small>点击定位到画布</small></span></button>)}{!items.some((item) => item.kind === "image" && item.src) && <p className={styles.libraryEmpty}>还没有图片。导入图片后会出现在这里。</p>}</>}
+            {sidebarTab === "prompts" && <><div className={styles.librarySectionHeading}><span>提示词库</span><button disabled={current?.kind !== "prompt"} onClick={saveCurrentPrompt}>保存当前</button></div>{[...customPrompts, ...starterPrompts].filter((item) => !sidebarSearch || `${item.title} ${item.text} ${item.group}`.toLowerCase().includes(sidebarSearch.toLowerCase())).map((template) => <button className={styles.promptLibraryRow} key={template.id} onClick={() => applyPromptTemplate(template)}><small>{template.group}</small><strong>{template.title}</strong><span>{template.text}</span></button>)}</>}
+            {sidebarTab === "workflow" && <div className={styles.workflowForm}><small>双图空间效果图</small><h3>空间 × 参考</h3><p>先明确两张图的角色。模型会按顺序读取：图1 是空间图，图2 是参考图。</p><label>图1 · 空间图<select value={workflowSpaceId} onChange={(event) => setWorkflowSpaceId(event.target.value)}><option value="">请选择空间图</option>{items.filter((item) => item.kind === "image" && item.src).map((item) => <option key={item.id} value={item.id}>{item.prompt || item.id.slice(0, 8)}</option>)}</select></label><label>图2 · 参考图<select value={workflowReferenceId} onChange={(event) => setWorkflowReferenceId(event.target.value)}><option value="">请选择参考图</option>{items.filter((item) => item.kind === "image" && item.src).map((item) => <option key={item.id} value={item.id}>{item.prompt || item.id.slice(0, 8)}</option>)}</select></label><fieldset><legend>生成方式</legend><label><input type="radio" checked={workflowMode === "rebuild"} onChange={() => setWorkflowMode("rebuild")} /> 空间重建 <small>默认；空间只提供尺度与透视</small></label><label><input type="radio" checked={workflowMode === "fusion"} onChange={() => setWorkflowMode("fusion")} /> 溶图融合 <small>保留原空间的风格与材质</small></label></fieldset><label>补充要求（可选）<textarea value={workflowNote} onChange={(event) => setWorkflowNote(event.target.value)} placeholder="例如：保留参考图的木质家具与暖光" /></label><button className={styles.workflowStart} disabled={!workflowSpaceId || !workflowReferenceId || workflowSpaceId === workflowReferenceId} onClick={startSpatialWorkflow}>建立生图工作流 ↗</button><p className={styles.workflowFootnote}>建立节点不会消耗生图次数；确认描述并点击生成后才会请求模型。</p></div>}
+          </div></>}
+      </aside>
       <section className={styles.canvasArea} aria-label="无限创作画布" onContextMenu={(event) => {
         const target = event.target as Element;
         if (target.closest("[data-canvas-context-menu],textarea,input,a")) return;
@@ -427,13 +538,30 @@ export default function Canvas() {
             {!items.length && <div className={styles.emptyCanvas}><h2>从一个想法开始</h2><p>添加描述节点或导入图片，组成你的创作流程。两张图片可用右侧圆点连接，再参考生图。</p><button onClick={() => addNode("prompt")}>添加描述节点</button></div>}
           </div>
         </div>
-        <div className={styles.floatingToolbar}>
-          <button onClick={() => setShowNodeMenu((value) => !value)}><b>＋</b>添加节点</button><i />
-          <button onClick={fitView}>整理画布</button><i />
-          <button disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? "正在生成…" : "▶ 运行生图"}</button>
-          <span className={styles.toolbarMode}><span className={styles.liveDot} />拖出选框 · 空格拖动画布</span>
+        <div className={`${styles.floatingToolbar} ${current ? styles.nodeToolbar : ""}`}>
+          {current ? <>
+            <button title="节点信息" aria-label="节点信息" onClick={() => setToolbarMenu(toolbarMenu === "info" ? null : "info")}><Info size={17} /></button>
+            <button title="删除节点" aria-label="删除节点" onClick={() => removeNode(current.id)}><Trash2 size={17} /></button>
+            <button title="标记到资产" aria-label="标记到资产" disabled={!current.src} onClick={() => setSavedAssetIds((ids) => ids.includes(current.id) ? ids.filter((id) => id !== current.id) : [...ids, current.id])}>{savedAssetIds.includes(current.id) ? <Check size={17} /> : <FolderPlus size={17} />}</button>
+            <button title="下载节点" aria-label="下载节点" onClick={() => downloadNode(current)}><Download size={17} /></button>
+            <button title="复制节点" aria-label="复制节点" onClick={() => duplicateNode(current.id)}><Copy size={17} /></button>
+            <button title="复制图片或描述" aria-label="复制图片或描述" onClick={() => void copyNodeContent(current)}><FileText size={17} /></button>
+            <button title="导出节点数据" aria-label="导出节点数据" onClick={() => exportNode(current)}><Share2 size={17} /></button>
+            <button title="下一次生成的风格" aria-label="下一次生成的风格" onClick={() => setToolbarMenu(toolbarMenu === "style" ? null : "style")}><Paintbrush size={17} /></button>
+            <button title="居中裁切图片" aria-label="居中裁切图片" disabled={!current.src} onClick={() => setToolbarMenu(toolbarMenu === "crop" ? null : "crop")}><Scissors size={17} /></button>
+            <button title="选中节点排成网格" aria-label="选中节点排成网格" disabled={selectedIds.length < 2} onClick={arrangeSelected}><Grid2X2 size={17} /></button>
+            <button title="放大并定位节点" aria-label="放大并定位节点" onClick={() => focusNode(current.id, true)}><ZoomIn size={17} /></button>
+            <button title="预览图片" aria-label="预览图片" onClick={() => current.src ? setPreviewId(current.id) : focusNode(current.id, true)}><Expand size={17} /></button>
+            <button title="更多节点操作" aria-label="更多节点操作" onClick={() => setToolbarMenu(toolbarMenu === "more" ? null : "more")}><Ellipsis size={17} /></button>
+          </> : <><button onClick={() => setShowNodeMenu((value) => !value)}><b>＋</b>添加节点</button><i /><button onClick={fitView}>整理画布</button><i /><button disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? "正在生成…" : "▶ 运行生图"}</button><span className={styles.toolbarMode}><span className={styles.liveDot} />拖出选框 · 空格拖动画布</span></>}
         </div>
-        <div className={styles.zoomControls}><button aria-label="放大" onClick={() => zoomBy(1.15)}>＋</button><button aria-label="缩小" onClick={() => zoomBy(.87)}>−</button><button aria-label="适配画布" onClick={fitView}>⌗</button><span>{Math.round(view.zoom * 100)}%</span></div>
+        {current && toolbarMenu && <div className={styles.nodeToolPanel}>
+          {toolbarMenu === "info" && <><strong>{current.kind === "image" ? "图片节点" : "描述节点"}</strong><p>{current.kind === "image" ? current.src ? "已生成或导入" : "等待生成" : `${current.prompt.length} 字符`}</p><p>连接：{edges.filter((edge) => edge.sourceId === current.id || edge.targetId === current.id).length} 条</p></>}
+          {toolbarMenu === "style" && <><strong>下一次生成的视觉方向</strong>{([['after', '实验视觉'], ['photo', '电影摄影'], ['original', '原始描述']] as const).map(([value, label]) => <button key={value} onClick={() => { setStyle(value); setToolbarMenu(null); setMessage(`已选择${label}。`); }}>{style === value ? "✓ " : ""}{label}</button>)}</>}
+          {toolbarMenu === "crop" && <><strong>图片居中裁切</strong><select value={cropRatio} onChange={(event) => setCropRatio(event.target.value)}><option value="1:1">1:1 方形</option><option value="16:9">16:9 横图</option><option value="9:16">9:16 竖图</option><option value="4:3">4:3 横图</option><option value="3:4">3:4 竖图</option></select><button onClick={() => void cropCurrentImage()}>应用裁切</button></>}
+          {toolbarMenu === "more" && <><strong>更多操作</strong>{current.kind === "prompt" && <button onClick={() => { saveCurrentPrompt(); setToolbarMenu(null); }}>保存到提示词库</button>}<button onClick={() => { focusNode(current.id); setToolbarMenu(null); }}>定位到画布中央</button><button onClick={() => { exportNode(current); setToolbarMenu(null); }}>导出节点备份</button></>}
+        </div>}
+        <div className={styles.zoomControls}><button aria-label="放大" onClick={() => zoomBy(1.25)}>＋</button><button aria-label="缩小" onClick={() => zoomBy(.8)}>−</button><button aria-label="适配画布" onClick={fitView}>⌗</button><input aria-label="画布缩放" type="range" min="10" max="800" value={Math.round(view.zoom * 100)} onChange={(event) => { const rect = viewportRef.current?.getBoundingClientRect(); const px = (rect?.width ?? 900) / 2, py = (rect?.height ?? 650) / 2, zoom = Number(event.target.value) / 100; setView((old) => ({ zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom })); }} /><span>{Math.round(view.zoom * 100)}%</span></div>
         <input ref={imageInputRef} className={styles.hiddenInput} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { importImage(event.target.files?.[0]); event.target.value = ""; }} />
       </section>
       <aside className={styles.inspector}>
@@ -452,6 +580,7 @@ export default function Canvas() {
         <footer className={styles.inspectorFooter}><span>AFTER NOW IMAGE CANVAS</span><Link href="/#lab">返回实验室 ↗</Link></footer>
       </aside>
     </div>
+    {previewId && items.find((item) => item.id === previewId)?.src && <div className={styles.previewOverlay} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewId(null)}><button aria-label="关闭预览" onClick={() => setPreviewId(null)}>×</button><img src={items.find((item) => item.id === previewId)!.src} alt="图片预览" onClick={(event) => event.stopPropagation()} /></div>}
   </main>;
 }
 
