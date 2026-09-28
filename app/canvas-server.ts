@@ -24,14 +24,11 @@ export async function getCanvasUser() {
   // Public generation requires a verified email, even if signup settings change.
   return user.id && user.email_confirmed_at ? { id: String(user.id), email: String(user.email) } : null;
 }
-function limit(name: string, fallback: number) {
-  const value = Number(process.env[name]);
-  return Number.isInteger(value) && value > 0 && value <= 10000 ? value : fallback;
-}
+const dailyGenerationLimit = 100;
 export async function canvasQuota(userId: string, reserve = false) {
   const config = authConfig();
   if (!config) throw new Error("NOT_CONFIGURED");
-  const response = await fetch(`${config.url}/rest/v1/rpc/canvas_quota`, { method: "POST", headers: { apikey: config.service, Authorization: `Bearer ${config.service}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_user: userId, p_reserve: reserve, p_user_limit: limit("IMAGE_CANVAS_USER_DAILY_LIMIT", 3), p_global_limit: limit("IMAGE_CANVAS_GLOBAL_DAILY_LIMIT", 30) }), cache: "no-store", signal: AbortSignal.timeout(10000) });
+  const response = await fetch(`${config.url}/rest/v1/rpc/canvas_quota`, { method: "POST", headers: { apikey: config.service, Authorization: `Bearer ${config.service}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_user: userId, p_reserve: reserve, p_user_limit: dailyGenerationLimit, p_global_limit: dailyGenerationLimit }), cache: "no-store", signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error("QUOTA_UNAVAILABLE");
   return await response.json() as { allowed: boolean; reason: string; remaining: number; globalRemaining: number; userLimit: number; globalLimit: number; resetsAt: string };
 }

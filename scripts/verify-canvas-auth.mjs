@@ -21,15 +21,15 @@ const mock = createServer(async (req, res) => {
   if (req.url === '/auth/v1/signup') { res.end('{}'); return; }
   if (req.url === '/rest/v1/rpc/canvas_quota') {
     assert.equal(req.headers.apikey, 'test-service');
-    assert.equal(body.p_user_limit, 3); assert.equal(body.p_global_limit, 30);
+    assert.equal(body.p_user_limit, 100); assert.equal(body.p_global_limit, 100);
     if (body.p_reserve) reserves++;
-    res.end(JSON.stringify({ allowed: !body.p_reserve, reason: body.p_reserve ? 'user' : '', remaining: 0, globalRemaining: 25, userLimit: 3, globalLimit: 30, resetsAt: '2026-01-02' })); return;
+    res.end(JSON.stringify({ allowed: !body.p_reserve, reason: body.p_reserve ? 'user' : '', remaining: 0, globalRemaining: 25, userLimit: 100, globalLimit: 100, resetsAt: '2026-01-02' })); return;
   }
   res.statusCode = 404; res.end('{}');
 });
 await new Promise(resolve => mock.listen(3099, '127.0.0.1', resolve));
 const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '3100'], {
-  env: { ...process.env, SUPABASE_URL: 'http://127.0.0.1:3099', SUPABASE_ANON_KEY: 'test-public', SUPABASE_SERVICE_ROLE_KEY: 'test-service', CLOUDFLARE_ACCOUNT_ID: 'test', CLOUDFLARE_API_TOKEN: 'test', IMAGE_CANVAS_USER_DAILY_LIMIT: '3', IMAGE_CANVAS_GLOBAL_DAILY_LIMIT: '30' }, stdio: 'pipe',
+  env: { ...process.env, IMAGE_CANVAS_PROVIDER: '', SUPABASE_URL: 'http://127.0.0.1:3099', SUPABASE_ANON_KEY: 'test-public', SUPABASE_SERVICE_ROLE_KEY: 'test-service', CLOUDFLARE_ACCOUNT_ID: 'test', CLOUDFLARE_API_TOKEN: 'test', IMAGE_CANVAS_USER_DAILY_LIMIT: '3', IMAGE_CANVAS_GLOBAL_DAILY_LIMIT: '30' }, stdio: 'pipe',
 });
 let logs = ''; child.stdout.on('data', b => logs += b); child.stderr.on('data', b => logs += b);
 const base = 'http://127.0.0.1:3100';

@@ -15,10 +15,9 @@ Keep `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. The online canvas uses 
 - `SUPABASE_URL`: Project URL.
 - `SUPABASE_ANON_KEY`: legacy anon API key (not service role).
 - `SUPABASE_SERVICE_ROLE_KEY`: legacy service_role key. **Secret**, server-only; never upload it or use NEXT_PUBLIC_.
-- `IMAGE_CANVAS_USER_DAILY_LIMIT`: `3`.
-- `IMAGE_CANVAS_GLOBAL_DAILY_LIMIT`: `30`.
+- The current release allows 100 attempts per verified account per day and 100 attempts across the site per day. Older `IMAGE_CANVAS_USER_DAILY_LIMIT` and `IMAGE_CANVAS_GLOBAL_DAILY_LIMIT` Vercel values do not override these limits.
 
-The 3-per-user / 30-global values are conservative experiment limits, not a guarantee that all 30 requests fit Cloudflare's free daily allocation. Workers AI's Free plan currently includes 10,000 Neurons per day; when exhausted, provider calls stop until the daily reset. Check Cloudflare's current pricing before opening the canvas broadly. Limits measure model-call attempts, including failed/timed-out calls because a timeout may still consume provider compute. Validation/auth failures do not count. Quota database failures block generation (fail closed).
+The 100-attempt limit is an application cap, not a guarantee that all 100 requests fit Cloudflare's free daily allocation. Workers AI's Free plan currently includes 10,000 Neurons per day; when exhausted, provider calls stop until the daily reset. Check Cloudflare's current pricing before opening the canvas broadly. Limits measure model-call attempts, including failed/timed-out calls because a timeout may still consume provider compute. Validation/auth failures do not count. Quota database failures block generation (fail closed).
 
 Upload new app files and SQL/docs to the existing repository at their original paths, then redeploy after configuring variables. If auth/database are not connected, import/draft tools still work but image generation is disabled.
 
@@ -27,9 +26,9 @@ Upload new app files and SQL/docs to the existing repository at their original p
 - Register and verify email; log in; refresh; generate an image using the Cloudflare FLUX.2 Klein model.
 - Session is an HttpOnly, Secure production, SameSite Strict cookie; expires after at most one hour. Log in again after expiry. No automatic token refresh or password recovery UI in this version.
 - Log out and confirm generation is blocked. Old shared passphrase must not work.
-- Set user cap to 1, redeploy, and try two requests. Only one may reach Cloudflare.
-- Test simultaneous requests with two accounts and global cap 1 on a test project: only one reservation allowed.
-- Restore 3 / 30 before sharing. Reset is at 00:00 UTC (08:00 China time).
+- Confirm the signed-in account displays a daily cap of 100. The whole site also has a daily cap of 100, shared by all accounts.
+- Test simultaneous requests against the SQL database on a test project to confirm reservations cannot exceed the configured global cap.
+- Reset is at 00:00 UTC (08:00 China time).
 
 Automated local route checks: `npm run build` then `node scripts/verify-canvas-auth.mjs`. This uses a local Supabase stub, no credentials or paid provider calls. Run the concurrency checks against the real SQL database after setup; the local test cannot prove database behavior.
 
