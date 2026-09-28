@@ -47,6 +47,7 @@ try {
   const cookie = cookieHeader.split(';')[0];
   const session = await fetch(base + '/api/canvas-auth', { headers: { Cookie: cookie } }); assert.equal((await session.json()).user.email, user.email);
   const empty = await post('/api/image-canvas', { prompt: '' }, cookie); assert.equal(empty.status, 400); assert.equal(reserves, 0);
+  const invalidReference = await post('/api/image-canvas', { prompt: 'combine two spaces', references: ['not-an-image'] }, cookie); assert.equal(invalidReference.status, 400); assert.equal(reserves, 0);
   const exhausted = await post('/api/image-canvas', { prompt: 'cat' }, cookie); assert.equal(exhausted.status, 429); assert.equal((await exhausted.json()).quota.remaining, 0); assert.equal(reserves, 1);
   const logout = await post('/api/canvas-auth', { action: 'logout' }, cookie); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/i);
   console.log('PASS: login, signup confirmation, session cookie, logout, origin checks, anonymous blocking, validation, and quota blocking. No image-provider calls.');

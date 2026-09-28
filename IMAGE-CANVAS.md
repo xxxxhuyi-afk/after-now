@@ -2,6 +2,10 @@
 
 Current version uses verified-email login and persistent daily quotas. See PUBLIC-CANVAS.md for setup. The earlier shared passphrase is no longer accepted. Images and drafts remain in the browser.
 
+## Reference image workflow
+
+Drag the output circle on one completed image to the input circle on another completed image. The canvas creates a new prompt node linked to both images. Edit its instruction to say what to keep from image 1 and image 2, then click Generate. You can also drag up to four completed images into an existing prompt node. Reference images are reduced to under 512 × 512 pixels in the browser before generation. The original images remain on the canvas.
+
 ## Local open-source generation
 
 For private local testing, set `IMAGE_CANVAS_PROVIDER=local` in `.env.local` (copy `.env.local.example`), then restart Next.js. Set `AFTER_NOW_LOCAL_DATA` to a folder on a drive with enough free space (for example `D:\AfterNow\ImageCanvas`) to keep the virtual environment, model weights, runtime cache, and generated PNGs off the system drive. Install the runtime with `npm run image:local:setup`, start it in a separate terminal with `npm run image:local`, and refresh `/lab/image-canvas`. Runtime files are kept in `.local-image-runtime` within that folder; generated images are in `outputs`. These files are not part of website builds or uploads.

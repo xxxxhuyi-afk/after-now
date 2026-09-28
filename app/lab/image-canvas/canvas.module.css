@@ -21,4 +21,11 @@
 .profileForm input { width:100%; padding:9px; border:1px solid #41494a; border-radius:5px; color:#f1f3ef; background:#202527; }
 .profileForm .authActions button { width:auto; flex:1; }
 .profileForm p { margin:0; color:#aeb7b2; line-height:1.5; }
+.referenceStrip { display:flex; align-items:center; gap:7px; margin:0 0 10px; }
+.referenceStrip span { position:relative; width:48px; height:38px; overflow:hidden; border:1px solid #758d44; border-radius:4px; }
+.referenceStrip img { width:100%; height:100%; object-fit:cover; }
+.referenceStrip b { position:absolute; left:2px; bottom:2px; padding:1px 3px; color:#fff; background:#111a; font-size:9px; }
+.referenceStrip button { position:absolute; right:1px; top:1px; width:17px; height:17px; padding:0; border:0; border-radius:3px; color:#fff; background:#111a; cursor:pointer; }
+.referenceStrip small { color:#929c96; font-size:9px; }
+.referenceHint { margin:0 0 12px; color:#87908e; font-size:10px; line-height:1.55; }
 

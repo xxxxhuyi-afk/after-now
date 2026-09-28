@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent, type Wheel
 import Link from "next/link";
 import styles from "./canvas.module.css";
 
-type Item = { id: string; kind: "prompt" | "image"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; pending?: boolean; aspectRatio?: string };
+type Item = { id: string; kind: "prompt" | "image"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; sources?: string[]; pending?: boolean; aspectRatio?: string };
 type Viewport = { x: number; y: number; zoom: number };
 type Action =
   | { kind: "pan"; pointer: number; startX: number; startY: number; viewX: number; viewY: number }
@@ -16,6 +16,21 @@ const starterItems: Item[] = [
   { id: "starter-image", kind: "image", prompt: "等待生成图片", x: 720, y: 210, width: 330, from: "starter-prompt", pending: true, aspectRatio: "16 / 9" },
 ];
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const referenceDataUrl = async (src: string) => {
+  const image = new Image();
+  image.src = src;
+  await image.decode();
+  const scale = Math.min(1, 510 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.floor(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.floor(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("参考图无法读取，请重新导入图片。");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
+};
 
 export default function Canvas() {
   const [items, setItems] = useState<Item[]>([]);
@@ -138,12 +153,15 @@ export default function Canvas() {
     const node: Item = { id, kind: "image", src, prompt: description, x: 1120 + (items.filter((item) => item.kind === "image").length % 2) * 370, y: 190 + Math.floor(items.filter((item) => item.kind === "image").length / 2) * 360, width: 330, ...(from ? { from } : {}), ...(aspectRatio ? { aspectRatio } : {}) };
     intentionallyEmpty.current = false; setItems((previous) => [...previous, node]); setSelected(id);
   };
-  const generate = async () => {
-    const source = currentPromptNode;
+  const generate = async (sourceId?: string) => {
+    const source = sourceId ? items.find((item) => item.id === sourceId && item.kind === "prompt") : currentPromptNode;
     if (!source?.prompt.trim()) { setMessage("先在描述节点里写下画面内容。"); return; }
     setBusy(true); setMessage("正在生成图片，请稍候…");
     try {
-      const response = await fetch("/api/image-canvas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: source.prompt, ratio, style }) });
+      const referenceNodes = (source.sources ?? []).map((id) => items.find((item) => item.id === id));
+      if (referenceNodes.some((item) => !item?.src)) throw new Error("有参考图片已被删除，请重新连接后再生成。");
+      const references = await Promise.all(referenceNodes.map((item) => referenceDataUrl(item!.src!)));
+      const response = await fetch("/api/image-canvas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: source.prompt, ratio, style, references }) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error); }
       const blob = await response.blob();
       const imageId = localMode ? response.headers.get("x-canvas-image-id") : null;
@@ -152,7 +170,7 @@ export default function Canvas() {
       const cssRatio = ratio.replace(":", " / ");
       if (pending) setItems((all) => all.map((item) => item.id === pending.id ? { ...item, src, prompt: source.prompt, pending: false, aspectRatio: cssRatio } : item));
       else addImage(src, source.prompt, source.id, cssRatio);
-      setMessage("图片已生成并连入画布。可以继续修改描述或再生成一版。");
+      setMessage(references.length ? `已参考 ${references.length} 张图片生成新图，并连入画布。` : "图片已生成并连入画布。可以继续修改描述或再生成一版。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "生成失败，请重试。"); }
     finally { setBusy(false); void refreshAccount(); }
   };
@@ -198,7 +216,22 @@ export default function Canvas() {
     if (action.kind === "connect") {
       const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-node-id][data-port='input']") as HTMLElement | null;
       const targetId = target?.dataset.nodeId;
-      if (targetId && targetId !== action.id) { setItems((all) => all.map((item) => item.id === targetId ? { ...item, from: action.id } : item)); setMessage("画布节点已连接。"); }
+      if (targetId && targetId !== action.id) {
+        const sourceNode = items.find((item) => item.id === action.id);
+        const targetNode = items.find((item) => item.id === targetId);
+        if (sourceNode?.kind === "image" && sourceNode.src && targetNode?.kind === "prompt") {
+          const sources = targetNode.sources ?? [];
+          if (sources.includes(sourceNode.id)) setMessage("这张参考图已经连接到描述节点。");
+          else if (sources.length >= 4) setMessage("每个描述节点最多连接 4 张参考图。");
+          else { setItems((all) => all.map((item) => item.id === targetId ? { ...item, sources: [...sources, sourceNode.id] } : item)); setSelected(targetId); setMessage(`已加入第 ${sources.length + 1} 张参考图。请描述如何融合，再点击生成图片。`); }
+        } else if (sourceNode?.kind === "image" && sourceNode.src && targetNode?.kind === "image" && targetNode.src) {
+          const id = crypto.randomUUID();
+          const newPrompt: Item = { id, kind: "prompt", prompt: "以图1的空间布局与图2的建筑和材质为参考，融合生成一个完整、连贯的空间场景。", x: Math.max(sourceNode.x + sourceNode.width, targetNode.x + targetNode.width) + 100, y: Math.min(sourceNode.y, targetNode.y), width: 310, sources: [sourceNode.id, targetNode.id] };
+          setItems((all) => [...all, newPrompt]); setSelected(id); setMessage("两张图片已连接到融合描述节点。修改要求后点击生成图片。");
+          const rect = viewportRef.current?.getBoundingClientRect();
+          if (rect) setView((old) => ({ ...old, x: rect.width / 2 - (newPrompt.x + 155) * old.zoom, y: rect.height / 2 - (newPrompt.y + 120) * old.zoom }));
+        } else { setItems((all) => all.map((item) => item.id === targetId ? { ...item, from: action.id } : item)); setMessage("画布节点已连接。"); }
+      }
       setConnectPoint(null);
     }
     pointerAction.current = null;
@@ -227,9 +260,9 @@ export default function Canvas() {
     setItems((all) => all.map((item) => item.id === currentPromptNode.id ? { ...item, prompt: `${item.prompt}${item.prompt.trim() ? "，" : ""}${addition}` } : item));
     setAssistantText(""); setMessage("补充内容已加入描述节点，请确认后生成。");
   };
-  const removeCurrent = () => { if (!current) return; const next = items.filter((item) => item.id !== current.id).map((item) => item.from === current.id ? { ...item, from: undefined } : item); intentionallyEmpty.current = next.length === 0; setItems(next); setSelected(null); };
+  const removeCurrent = () => { if (!current) return; const next = items.filter((item) => item.id !== current.id).map((item) => ({ ...item, ...(item.from === current.id ? { from: undefined } : {}), ...(item.sources ? { sources: item.sources.filter((id) => id !== current.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); setSelected(null); };
   const saveCanvas = () => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, intentionallyEmpty: intentionallyEmpty.current })); setMessage("画布已保存在当前浏览器。"); } catch { setMessage("浏览器存储空间不足，请下载重要图片后移除部分图片。"); } };
-  const edges = items.filter((item) => item.from).map((item) => ({ target: item, source: items.find((source) => source.id === item.from) })).filter((edge): edge is { target: Item; source: Item } => Boolean(edge.source));
+  const edges = items.flatMap((item) => [...(item.from ? [item.from] : []), ...(item.sources ?? [])].map((sourceId) => ({ target: item, source: items.find((source) => source.id === sourceId) }))).filter((edge): edge is { target: Item; source: Item } => Boolean(edge.source));
   const nodePortY = (item: Item) => { if (item.kind === "prompt") return 125; const [width, height] = item.aspectRatio?.split("/").map(Number) ?? [4, 3]; const imageHeight = (item.width - 18) * height / width; return 43 + (item.src ? imageHeight : Math.max(190, imageHeight)) / 2; };
   const pathBetween = (source: Item, target: Item) => { const x1 = source.x + source.width, y1 = source.y + nodePortY(source), x2 = target.x, y2 = target.y + nodePortY(target), bend = Math.max(60, (x2 - x1) * .5); return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`; };
 
@@ -265,16 +298,16 @@ export default function Canvas() {
               {edges.map(({ source, target }) => <path key={`${source.id}-${target.id}`} d={pathBetween(source, target)} />)}
               {connectPoint && (() => { const source = items.find((item) => item.id === connectPoint.id); const portY = source ? nodePortY(source) : 0; return source ? <path className={styles.draftEdge} d={`M ${source.x + source.width} ${source.y + portY} C ${source.x + source.width + 80} ${source.y + portY}, ${connectPoint.x - 80} ${connectPoint.y}, ${connectPoint.x} ${connectPoint.y}`} /> : null; })()}
             </svg>
-            {items.map((item) => <article key={item.id} data-node-id={item.id} data-node-type={item.kind} className={`${styles.node} ${item.kind === "prompt" ? styles.promptNode : styles.imageNode} ${selected === item.id ? styles.selectedNode : ""}`} style={{ left: item.x, top: item.y, width: item.width }} onPointerDown={(event) => beginNodeDrag(event, item)}>
-              <div className={styles.nodeHeader}><span className={`${styles.nodeTypeDot} ${item.kind === "image" ? styles.imageTypeDot : ""}`} />{item.kind === "prompt" ? "画面描述" : "图像结果"}<span className={styles.nodeStatus}>{item.pending ? "等待生成" : item.src ? "已完成" : "素材"}</span><button className={styles.nodeMore} aria-label="删除此节点" onClick={(event) => { event.stopPropagation(); const next = items.filter((node) => node.id !== item.id); intentionallyEmpty.current = next.length === 0; setItems(next); if (selected === item.id) setSelected(null); }}>×</button></div>
-              {item.kind === "prompt" ? <div className={styles.promptSurface}><small>IMAGE PROMPT</small><textarea aria-label="画面描述" value={item.prompt} placeholder="写下你想生成的画面…" onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setItems((all) => all.map((node) => node.id === item.id ? { ...node, prompt: event.target.value } : node))} /><button onClick={(event) => { event.stopPropagation(); setSelected(item.id); void generate(); }} disabled={busy || !canGenerate}>{busy ? "生成中…" : "生成图片 ↗"}</button></div> : <div className={styles.imageSurface}>
+              {items.map((item) => <article key={item.id} data-node-id={item.id} data-node-type={item.kind} className={`${styles.node} ${item.kind === "prompt" ? styles.promptNode : styles.imageNode} ${selected === item.id ? styles.selectedNode : ""}`} style={{ left: item.x, top: item.y, width: item.width }} onPointerDown={(event) => beginNodeDrag(event, item)}>
+              <div className={styles.nodeHeader}><span className={`${styles.nodeTypeDot} ${item.kind === "image" ? styles.imageTypeDot : ""}`} />{item.kind === "prompt" ? "画面描述" : "图像结果"}<span className={styles.nodeStatus}>{item.pending ? "等待生成" : item.src ? "已完成" : "素材"}</span><button className={styles.nodeMore} aria-label="删除此节点" onClick={(event) => { event.stopPropagation(); const next = items.filter((node) => node.id !== item.id).map((node) => ({ ...node, ...(node.from === item.id ? { from: undefined } : {}), ...(node.sources ? { sources: node.sources.filter((id) => id !== item.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); if (selected === item.id) setSelected(null); }}>×</button></div>
+              {item.kind === "prompt" ? <div className={styles.promptSurface}><small>IMAGE PROMPT</small>{Boolean(item.sources?.length) && <div className={styles.referenceStrip}>{item.sources?.map((id, index) => { const reference = items.find((node) => node.id === id); return reference?.src ? <span key={id}><img src={reference.src} alt={`参考图 ${index + 1}`} /><b>图{index + 1}</b><button aria-label={`移除参考图 ${index + 1}`} title="取消这张参考图" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setItems((all) => all.map((node) => node.id === item.id ? { ...node, sources: node.sources?.filter((sourceId) => sourceId !== id) } : node)); }}>×</button></span> : null; })}<small>参考图片</small></div>}<textarea aria-label="画面描述" value={item.prompt} placeholder="写下你想生成的画面…" onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setItems((all) => all.map((node) => node.id === item.id ? { ...node, prompt: event.target.value } : node))} /><button onClick={(event) => { event.stopPropagation(); setSelected(item.id); void generate(item.id); }} disabled={busy || !canGenerate}>{busy ? "生成中…" : "生成图片 ↗"}</button></div> : <div className={styles.imageSurface}>
               {item.src ? <img src={item.src} alt={item.prompt || "生成的图像"} draggable={false} style={item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined} onLoad={(event) => { if (!item.aspectRatio) { const value = `${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`; setItems((all) => all.map((node) => node.id === item.id ? { ...node, aspectRatio: value } : node)); } }} /> : <div className={styles.imagePlaceholder} style={{ aspectRatio: item.aspectRatio ?? "4 / 3" }}><span>{item.pending ? "生成结果将出现在这里" : "导入或生成一张图片"}</span></div>}
                 <footer><span>{item.prompt || "未命名图像"}</span>{item.src && <a href={item.src} download={`after-now-${item.id}.png`} onPointerDown={(event) => event.stopPropagation()}>下载 ↓</a>}</footer>
               </div>}
               <button className={`${styles.port} ${styles.inputPort}`} style={{ top: nodePortY(item) }} data-port="input" data-node-id={item.id} aria-label="连接输入" title="连接输入" onPointerDown={(event) => event.stopPropagation()} />
-              <button className={`${styles.port} ${styles.outputPort}`} style={{ top: nodePortY(item) }} data-port="output" data-node-id={item.id} aria-label="拖动连接到其他节点" title="拖动到另一个节点以连接" onPointerDown={(event) => beginConnection(event, item)} />
+              <button className={`${styles.port} ${styles.outputPort}`} style={{ top: nodePortY(item) }} data-port="output" data-node-id={item.id} aria-label="拖动连接到其他节点" title={item.kind === "image" ? "拖到另一张图片或描述节点左侧圆点，作为生图参考" : "拖动到另一个节点以连接"} onPointerDown={(event) => beginConnection(event, item)} />
             </article>)}
-            {!items.length && <div className={styles.emptyCanvas}><h2>从一个想法开始</h2><p>添加描述节点或导入图片，组成你的创作流程。</p><button onClick={() => addNode("prompt")}>添加描述节点</button></div>}
+            {!items.length && <div className={styles.emptyCanvas}><h2>从一个想法开始</h2><p>添加描述节点或导入图片，组成你的创作流程。两张图片可用右侧圆点连接，再参考生图。</p><button onClick={() => addNode("prompt")}>添加描述节点</button></div>}
           </div>
         </div>
         <div className={styles.floatingToolbar}>
@@ -291,6 +324,7 @@ export default function Canvas() {
         <div className={styles.assistantContext}><span className={styles.agentAvatar}>A</span><div><strong>画布协作中</strong><small>{current ? `正在编辑${current.kind === "prompt" ? "画面描述" : "图像结果"}节点` : "选择一个节点开始编辑"}</small></div><span className={styles.liveDot} /></div>
         <div className={styles.inspectorScroll}>
           <section className={styles.section}><div className={styles.sectionHeading}><span>01 / 画面描述</span><button onClick={() => addNode("prompt")}>＋ 新描述</button></div>
+            {currentPromptNode?.sources?.length ? <p className={styles.referenceHint}>已连接 {currentPromptNode.sources.length} 张参考图。描述图1、图2各要保留的空间、建筑或风格，再点击生成。</p> : <p className={styles.referenceHint}>想按已有图片生成？把图片右侧圆点拖到描述节点左侧圆点；也可以把两张图片直接相连。</p>}
             {currentPromptNode ? <><textarea className={styles.mainPrompt} value={activePrompt} placeholder="描述你想生成的画面…" onChange={(event) => setItems((all) => all.map((item) => item.id === currentPromptNode.id ? { ...item, prompt: event.target.value } : item))} /><div className={styles.settingRow}><label>画面比例<select value={ratio} onChange={(event) => { const nextRatio = event.target.value; setRatio(nextRatio); setItems((all) => all.map((item) => item.kind === "image" && item.pending && item.from === currentPromptNode.id ? { ...item, aspectRatio: nextRatio.replace(":", " / ") } : item)); }}><option value="16:9">16:9 横屏</option><option value="9:16">9:16 竖屏</option><option value="4:3">4:3 横屏</option><option value="3:4">3:4 竖屏</option><option value="1:1">1:1 方形</option><option value="3:2">3:2 横屏</option><option value="2:3">2:3 竖屏</option></select></label></div><div className={styles.styleChoices}><span>视觉方向</span><div><button className={style === "after" ? styles.activeStyle : ""} onClick={() => setStyle("after")}>实验视觉</button><button className={style === "photo" ? styles.activeStyle : ""} onClick={() => setStyle("photo")}>电影摄影</button><button className={style === "original" ? styles.activeStyle : ""} onClick={() => setStyle("original")}>原始描述</button></div></div><button className={styles.generateButton} disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? "图片生成中…" : "生成图片　↗"}</button><p className={styles.usage}>{localMode ? authMessage : user ? `今日剩余 ${quota?.remaining ?? "—"} / ${quota?.userLimit ?? "—"} 次` : authMessage}</p></> : <div className={styles.noPrompt}><p>画布还没有描述节点。</p><button onClick={() => addNode("prompt")}>添加描述节点</button></div>}
           </section>
           {current?.kind === "image" && <section className={styles.section}><div className={styles.sectionHeading}><span>02 / 图像节点</span><button className={styles.dangerAction} onClick={removeCurrent}>移除</button></div><p className={styles.selectedDescription}>{current.src ? current.prompt : current.pending ? "运行描述节点后，生成的图片会出现在这里。" : "可通过导入图片填充此节点。"}</p>{current.src && <a className={styles.downloadButton} href={current.src} download={`after-now-${current.id}.png`}>下载原图 ↓</a>}</section>}

@@ -10,12 +10,13 @@ export async function POST(request: Request) {
     if (!sameOrigin(request)) return Response.json({ error: "请求来源不正确。" }, { status: 403 });
     try {
       const text = await request.text();
-      if (text.length > 4000) return Response.json({ error: "描述太长，请缩短后重试。" }, { status: 400 });
+      if (text.length > 3_500_000) return Response.json({ error: "参考图片太大，请缩小后重试。" }, { status: 413 });
       const body = JSON.parse(text);
       if (typeof body.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 1500) return Response.json({ error: "请输入 1–1500 字的描述。" }, { status: 400 });
+      if (body.references !== undefined && (!Array.isArray(body.references) || body.references.length > 4 || body.references.some((image: unknown) => typeof image !== "string" || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > 750_000))) return Response.json({ error: "最多使用 4 张参考图，每张需小于 512 KB。" }, { status: 400 });
       const response = await fetch("http://127.0.0.1:8765/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: body.prompt.trim(), ratio: body.ratio, style: body.style }),
+        body: JSON.stringify({ prompt: body.prompt.trim(), ratio: body.ratio, style: body.style, references: body.references ?? [] }),
         signal: AbortSignal.timeout(570000), cache: "no-store",
       });
       if (!response.ok) {
@@ -34,9 +35,13 @@ export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: "请求来源不正确。" }, { status: 403 });
   try {
     const text = await request.text();
-    if (text.length > 4000) return Response.json({ error: "描述太长，请缩短后重试。" }, { status: 400 });
+    if (text.length > 3_500_000) return Response.json({ error: "参考图片太大，请缩小后重试。" }, { status: 413 });
     const body = JSON.parse(text);
     if (typeof body.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 1500) return Response.json({ error: "请输入 1–1500 字的描述。" }, { status: 400 });
+    if (body.references !== undefined && (!Array.isArray(body.references) || body.references.length > 4 || body.references.some((image: unknown) => typeof image !== "string" || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > 750_000))) return Response.json({ error: "最多使用 4 张参考图，每张需小于 512 KB。" }, { status: 400 });
+    const references = (body.references ?? []) as string[];
+    const referenceBytes = references.map((image) => Buffer.from(image.slice("data:image/jpeg;base64,".length), "base64"));
+    if (referenceBytes.some((bytes) => bytes.length > 512_000 || bytes[0] !== 0xff || bytes[1] !== 0xd8)) return Response.json({ error: "参考图格式不正确，请重新连接图片。" }, { status: 400 });
     const user = await getCanvasUser();
     if (!user) return Response.json({ error: "请先登录并完成邮箱验证。" }, { status: 401 });
     const quota = await canvasQuota(user.id, true);
@@ -51,6 +56,7 @@ export async function POST(request: Request) {
     form.append("prompt", body.prompt.trim() + (rules[body.style] ?? ""));
     form.append("width", String(width));
     form.append("height", String(height));
+    referenceBytes.forEach((bytes, index) => form.append(`input_image_${index}`, new Blob([new Uint8Array(bytes)], { type: "image/jpeg" }), `reference-${index + 1}.jpg`));
     const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/run/@cf/black-forest-labs/flux-2-klein-4b`, {
       method: "POST", headers: { Authorization: `Bearer ${token}` },
       body: form, signal: AbortSignal.timeout(55000),

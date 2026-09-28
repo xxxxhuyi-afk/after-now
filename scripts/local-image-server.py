@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import os
 import threading
 import uuid
@@ -90,7 +91,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if length < 1 or length > 4000:
+            if length < 1 or length > 3_500_000:
                 self.send_json(400, {"error": "请求为空或超出长度限制。"})
                 return
             body = json.loads(self.rfile.read(length))
@@ -98,6 +99,25 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 1500:
                 self.send_json(400, {"error": "请输入 1–1500 字的画面描述。"})
                 return
+            references = body.get("references", [])
+            if not isinstance(references, list) or len(references) > 4:
+                self.send_json(400, {"error": "最多连接 4 张参考图。"})
+                return
+            from PIL import Image
+            reference_images = []
+            for encoded in references:
+                prefix = "data:image/jpeg;base64,"
+                if not isinstance(encoded, str) or not encoded.startswith(prefix) or len(encoded) > 750_000:
+                    self.send_json(400, {"error": "参考图格式不正确或过大。"})
+                    return
+                raw = base64.b64decode(encoded[len(prefix):], validate=True)
+                if len(raw) > 512_000 or not raw.startswith(b"\xff\xd8"):
+                    self.send_json(400, {"error": "参考图格式不正确或过大。"})
+                    return
+                with Image.open(BytesIO(raw)) as source_image:
+                    reference = source_image.convert("RGB")
+                    reference.thumbnail((510, 510))
+                    reference_images.append(reference)
             width, height = DIMENSIONS.get(body.get("ratio"), DIMENSIONS["16:9"])
             prompt = prompt.strip() + STYLE_HINTS.get(body.get("style"), "")
 
@@ -105,6 +125,7 @@ class Handler(BaseHTTPRequestHandler):
                 pipeline = load_pipeline()
                 image = pipeline(
                     prompt=prompt,
+                    image=reference_images or None,
                     width=width,
                     height=height,
                     num_inference_steps=4,
