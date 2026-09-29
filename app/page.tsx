@@ -151,6 +151,7 @@ export default function Home() {
               {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
               <span className={styles.labCardArrow}><Arrow diagonal /></span>
               {note.index === "L—06" && <LabToolPreview tool="hejing" />}
+              {note.index === "L—07" && <LabToolPreview tool="ppt" />}
               {note.index === "L—05" && <LabToolPreview />}
               {note.index === "L—04" && <LabToolPreview tool="canvas" />}
               {note.index === "L—01" && <LabToolPreview tool="paper" />}

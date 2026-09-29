@@ -1,15 +1,17 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import Link from "next/link";
-import { BookmarkPlus, Check, Copy, Download, Ellipsis, Expand, FileText, FolderPlus, Grid2X2, Image as ImageIcon, Info, PanelLeftClose, PanelLeftOpen, Paintbrush, Scissors, Search, Share2, Trash2, ZoomIn } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, BookmarkPlus, Check, Copy, Download, Ellipsis, Expand, Eraser, FileText, FolderPlus, Grid2X2, Image as ImageIcon, Info, Layers2, PanelLeftClose, PanelLeftOpen, Paintbrush, Scissors, Search, Share2, Trash2, Type, ZoomIn } from "lucide-react";
 import styles from "./canvas.module.css";
+import AssetEditor from "./asset-editor";
 
-type Item = { id: string; kind: "prompt" | "image"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; sources?: string[]; pending?: boolean; aspectRatio?: string };
+type Item = { id: string; kind: "prompt" | "image" | "text"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; sources?: string[]; pending?: boolean; aspectRatio?: string; fontSize?: number; fontFamily?: string; color?: string; textAlign?: "left" | "center" | "right"; fontWeight?: number };
 type Viewport = { x: number; y: number; zoom: number };
 type Edge = { sourceId: string; targetId: string; kind: "from" | "reference" };
 type CanvasMenu = { x: number; y: number; target: { kind: "canvas" } | { kind: "node"; id: string } | { kind: "edge"; edge: Edge } };
 type ConnectionMenu = { sourceId: string; x: number; y: number; worldX: number; worldY: number };
 type PromptTemplate = { id: string; title: string; text: string; group: string };
+type OcrLine = { text: string; originalText?: string; score: number | null; box: [number, number][] };
 type ImageModel = "flux-klein" | "sdxl-lightning" | "dreamshaper";
 type WorkflowTemplate = "rebuild" | "fusion" | "product" | "angles";
 type Action =
@@ -18,6 +20,8 @@ type Action =
   | { kind: "marquee"; pointer: number; startX: number; startY: number; additive: boolean }
   | { kind: "connect"; pointer: number; id: string };
 const storageKey = "after-now-image-canvas-v2";
+const releaseNoticeKey = "after-now-image-canvas-release-dismissed";
+const releaseNoticeVersion = "canvas-2026-09-29-direct-text-edit-v3";
 const initialPrompt = "一座安静的湖畔未来建筑，清晨薄雾，极简建筑摄影";
 const starterItems: Item[] = [
   { id: "starter-prompt", kind: "prompt", prompt: initialPrompt, x: 180, y: 190, width: 310 },
@@ -36,20 +40,31 @@ const imageModels: { id: ImageModel; name: string; note: string; references: boo
   { id: "sdxl-lightning", name: "SDXL Lightning", note: "极速草图 · 文字生图", references: false },
   { id: "dreamshaper", name: "DreamShaper", note: "写实氛围 · 文字生图", references: false },
 ];
-const referenceDataUrl = async (src: string) => {
+const referenceDataUrl = async (src: string, maxDimension = 510) => {
   const image = new Image();
   image.src = src;
   await image.decode();
-  const scale = Math.min(1, 510 / Math.max(image.naturalWidth, image.naturalHeight));
+  let scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.floor(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.floor(image.naturalHeight * scale));
   const context = canvas.getContext("2d");
   if (!context) throw new Error("参考图无法读取，请重新导入图片。");
-  context.fillStyle = "#fff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.82);
+  let dataUrl = "";
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    canvas.width = Math.max(1, Math.floor(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.floor(image.naturalHeight * scale));
+    context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    dataUrl = canvas.toDataURL("image/jpeg", attempt < 4 ? 0.82 - attempt * 0.08 : 0.56);
+    if (dataUrl.length * 0.75 <= 490_000) return dataUrl;
+    if (attempt >= 3) scale *= 0.85;
+  }
+  return dataUrl;
+};
+const imageDataUrl = async (src: string) => {
+  if (src.startsWith("data:")) return src;
+  const image = new Image(); image.src = src; await image.decode();
+  const canvas = document.createElement("canvas"); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d"); if (!context) throw new Error("无法读取这张图片。");
+  context.drawImage(image, 0, 0); return canvas.toDataURL("image/png");
 };
 
 export default function Canvas() {
@@ -67,7 +82,12 @@ export default function Canvas() {
   const [workflowNote, setWorkflowNote] = useState("");
   const [savedAssetIds, setSavedAssetIds] = useState<string[]>([]);
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
-  const [toolbarMenu, setToolbarMenu] = useState<"info" | "style" | "crop" | "upscale" | "more" | null>(null);
+  const [toolbarMenu, setToolbarMenu] = useState<"info" | "style" | "crop" | "upscale" | "more" | "text" | "editText" | null>(null);
+  const [assetEditor, setAssetEditor] = useState<"erase" | "split" | null>(null);
+  const [ocrLines, setOcrLines] = useState<OcrLine[]>([]);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [textReplaceBusy, setTextReplaceBusy] = useState(false);
+  const [ocrMessage, setOcrMessage] = useState("");
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [cropRatio, setCropRatio] = useState("1:1");
   const [upscaleFactor, setUpscaleFactor] = useState<2 | 4>(2);
@@ -89,6 +109,7 @@ export default function Canvas() {
   const [message, setMessage] = useState("空白处拖出选框；拖动选中节点可一起移动，按住空格拖动画布。");
   const [view, setView] = useState<Viewport>({ x: 70, y: 54, zoom: 0.88 });
   const [ready, setReady] = useState(false);
+  const [showReleaseNotice, setShowReleaseNotice] = useState(false);
   const [connectPoint, setConnectPoint] = useState<{ x: number; y: number; id: string } | null>(null);
   const [showNodeMenu, setShowNodeMenu] = useState(false);
   const [contextMenu, setContextMenu] = useState<CanvasMenu | null>(null);
@@ -136,7 +157,7 @@ export default function Canvas() {
         const parsed = JSON.parse(saved);
         if (["16:9", "9:16", "4:3", "3:4", "1:1", "3:2", "2:3"].includes(parsed.ratio)) setRatio(parsed.ratio);
         if (imageModels.some((model) => model.id === parsed.imageModel)) setImageModel(parsed.imageModel);
-        if (Array.isArray(parsed.items) && parsed.items.every((item: Item) => typeof item.id === "string" && (item.kind === "prompt" || item.kind === "image") && typeof item.prompt === "string" && Number.isFinite(item.x) && Number.isFinite(item.y) && Number.isFinite(item.width))) {
+        if (Array.isArray(parsed.items) && parsed.items.every((item: Item) => typeof item.id === "string" && (item.kind === "prompt" || item.kind === "image" || item.kind === "text") && typeof item.prompt === "string" && Number.isFinite(item.x) && Number.isFinite(item.y) && Number.isFinite(item.width))) {
           intentionallyEmpty.current = parsed.items.length === 0 && parsed.intentionallyEmpty === true;
           setItems(parsed.items.length === 0 && !intentionallyEmpty.current ? starterItems : parsed.items);
         }
@@ -157,6 +178,7 @@ export default function Canvas() {
     return () => controller.abort();
   }, []);
   useEffect(() => { if (!ready) return; const timer = window.setTimeout(() => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, imageModel, savedAssetIds, customPrompts, intentionallyEmpty: intentionallyEmpty.current })); } catch { setMessage("画布内容过多，图片不会自动保存在浏览器；请及时下载重要图片。"); } }, 500); return () => window.clearTimeout(timer); }, [items, view, ratio, imageModel, savedAssetIds, customPrompts, ready]);
+  useEffect(() => { if (!ready) return; try { if (localStorage.getItem(releaseNoticeKey) !== releaseNoticeVersion) setShowReleaseNotice(true); } catch {} }, [ready]);
   useEffect(() => {
     if (!ready) return;
     const previous = previousItems.current;
@@ -169,7 +191,7 @@ export default function Canvas() {
   useEffect(() => {
     const dismiss = (event: globalThis.PointerEvent) => { if (!(event.target as HTMLElement).closest("[data-canvas-context-menu]")) setContextMenu(null); if (!(event.target as HTMLElement).closest("[data-connection-menu]")) setConnectionMenu(null); };
     const keys = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setContextMenu(null); setConnectionMenu(null); }
+      if (event.key === "Escape") { setContextMenu(null); setConnectionMenu(null); if (showReleaseNotice) { try { localStorage.setItem(releaseNoticeKey, releaseNoticeVersion); } catch {} setShowReleaseNotice(false); } }
       if (event.code === "Space" && !(event.target as HTMLElement).closest("textarea,input,[contenteditable='true']")) { spaceHeld.current = true; event.preventDefault(); }
       if ((event.key === "Delete" || event.key === "Backspace") && selectedEdge && !(event.target as HTMLElement).closest("textarea,input,[contenteditable='true']")) {
         event.preventDefault(); disconnectEdge(selectedEdge); return;
@@ -194,12 +216,107 @@ export default function Canvas() {
   const canGenerate = localMode ? localServiceAvailable : Boolean(user && quota && quota.remaining > 0 && quota.globalRemaining > 0);
   const currentPromptNode = current?.kind === "prompt" ? current : items.find((item) => item.kind === "prompt") ?? null;
   const activePrompt = currentPromptNode?.prompt ?? "";
-  const addNode = (kind: "prompt" | "image") => {
+  const addNode = (kind: "prompt" | "image" | "text") => {
     const id = crypto.randomUUID();
-    const promptNode = kind === "prompt" ? null : currentPromptNode;
-    const next: Item = { id, kind, prompt: kind === "prompt" ? "" : "等待生成图片", x: 240 + (items.length % 3) * 70, y: 560 + (items.length % 3) * 70, width: kind === "prompt" ? 310 : 330, ...(promptNode ? { from: promptNode.id } : {}), ...(kind === "image" ? { pending: true, aspectRatio: ratio.replace(":", " / ") } : {}) };
+    const promptNode = kind === "image" ? currentPromptNode : null;
+    const next: Item = { id, kind, prompt: kind === "prompt" ? "" : kind === "text" ? "输入文字…" : "等待生成图片", x: 240 + (items.length % 3) * 70, y: 560 + (items.length % 3) * 70, width: kind === "prompt" ? 310 : kind === "text" ? 420 : 330, ...(kind === "text" ? { fontSize: 32, fontFamily: "Arial, Microsoft YaHei, sans-serif", color: "#f1f3ef", textAlign: "left" as const, fontWeight: 600 } : {}), ...(promptNode ? { from: promptNode.id } : {}), ...(kind === "image" ? { pending: true, aspectRatio: ratio.replace(":", " / ") } : {}) };
     intentionallyEmpty.current = false; setItems((all) => [...all, next]); setSelected(id); setSelectedIds([id]); setShowNodeMenu(false);
-    setMessage(kind === "prompt" ? "新描述节点已添加。" : "图片节点已添加，可以运行生成。");
+    setMessage(kind === "prompt" ? "新描述节点已添加。" : kind === "text" ? "可编辑文字图层已添加。" : "图片节点已添加，可以运行生成。");
+  };
+  const addImageLayer = (src: string, description: string, bounds: { x: number; y: number; width: number; height: number }, sourceSize: { width: number; height: number }, parent: Item, originalSrc?: string) => {
+    const id = crypto.randomUUID();
+    const image = new Image(); image.src = src;
+    const node: Item = { id, kind: "image", src, prompt: description, x: parent.x + (bounds.x / sourceSize.width) * parent.width, y: parent.y + (bounds.y / sourceSize.height) * parent.width, width: (bounds.width / sourceSize.width) * parent.width, from: parent.id, aspectRatio: `${bounds.width} / ${bounds.height}` };
+    if (originalSrc) setItems((all) => all.map((item) => item.id === parent.id ? { ...item, src: originalSrc } : item).concat(node));
+    else setItems((all) => [...all, node]);
+    setSelected(id); setSelectedIds([id]); setAssetEditor(null); setToolbarMenu(null);
+    setMessage(`${description}已作为独立图层加入画布；原图保留，可随时撤销或删除。`);
+  };
+  const recognizeImageText = async (image: Item) => {
+    if (!image.src) return;
+    setOcrBusy(true); setOcrMessage("正在识别图片中的文字…"); setOcrLines([]);
+    try {
+      const dataUrl = await imageDataUrl(image.src);
+      const { createWorker } = await import("tesseract.js");
+      setOcrMessage("首次使用会下载中文识别模型，请稍候…");
+      const worker = await createWorker("chi_sim+eng", 1, { logger: (event) => { if (event.status === "recognizing text") setOcrMessage(`正在识别图片文字 ${Math.round((event.progress ?? 0) * 100)}%…`); } });
+      let lines: OcrLine[];
+      try {
+        const { data } = await worker.recognize(dataUrl);
+        lines = data.lines.flatMap((line) => {
+          const text = line.text.trim();
+          if (!text) return [];
+          const { x0, y0, x1, y1 } = line.bbox;
+          return [{ text, originalText: text, score: Number.isFinite(line.confidence) ? line.confidence / 100 : null, box: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as [number, number][] }];
+        });
+      } finally { await worker.terminate(); }
+      setOcrLines(lines);
+      setOcrMessage(lines.length ? `识别到 ${lines.length} 段文字。修改后可直接让网站生成一张替换后的图片，也可转成独立文字图层。` : "这张图片里没有识别到文字。");
+    } catch (error) {
+      setOcrMessage(error instanceof Error ? `文字识别失败：${error.message}。请检查网络后重试。` : "文字识别失败，请检查网络后重试。");
+    }
+    finally { setOcrBusy(false); }
+  };
+  const addOcrTextLayers = (image: Item, cleanSrc?: string) => {
+    if (!image.src || !ocrLines.length) return;
+    const source = new Image();
+    source.onload = () => {
+      const scale = image.width / source.naturalWidth;
+      const copyId = crypto.randomUUID();
+      const copyX = image.x + image.width + 110;
+      const imageCopy: Item = { ...image, id: copyId, x: copyX, y: image.y, prompt: `${image.prompt} · 文字分层副本`, src: cleanSrc ?? image.src, from: undefined, sources: undefined, pending: false };
+      const nodes = ocrLines.filter((line) => line.text.trim()).map((line) => {
+        const xs = line.box.map(([x]) => x), ys = line.box.map(([, y]) => y);
+        const left = Math.min(...xs), top = Math.min(...ys), width = Math.max(...xs) - left, height = Math.max(...ys) - top;
+        return { id: crypto.randomUUID(), kind: "text" as const, prompt: line.text, x: copyX + left * scale, y: image.y + top * scale, width: Math.max(80, width * scale * 1.4), fontSize: clamp(height * scale * .82, 10, 160), fontFamily: "Microsoft YaHei, sans-serif", color: "#214fd2", textAlign: "left" as const, fontWeight: 600 };
+      });
+      if (!nodes.length) { setOcrMessage("先保留至少一段非空文字，再创建文字图层。"); return; }
+      setItems((all) => [...all, imageCopy, ...nodes]); setSelected(imageCopy.id); setSelectedIds([imageCopy.id, ...nodes.map((node) => node.id)]); setToolbarMenu(null);
+      setMessage(`已在原图右侧复制底图，并拆出 ${nodes.length} 个独立文字图层；原图保留，文字层不带连接线。`);
+    };
+    source.onerror = () => setOcrMessage("无法读取原图，不能定位识别到的文字。");
+    source.src = cleanSrc ?? image.src;
+  };
+  const replaceOcrText = async (image: Item) => {
+    if (!image.src || !ocrLines.length) return;
+    setTextReplaceBusy(true); setOcrMessage("正在清除原文字并重建底图…");
+    try {
+      const imageSrc = await imageDataUrl(image.src);
+      const source = new Image();
+      source.src = imageSrc;
+      await source.decode();
+      const mask = document.createElement("canvas"); mask.width = source.naturalWidth; mask.height = source.naturalHeight;
+      const context = mask.getContext("2d"); if (!context) throw new Error("无法创建文字修复蒙版。");
+      context.fillStyle = "#000"; context.fillRect(0, 0, mask.width, mask.height); context.fillStyle = "#fff";
+      for (const line of ocrLines) {
+        const xs = line.box.map(([x]) => x), ys = line.box.map(([, y]) => y);
+        const left = Math.min(...xs), top = Math.min(...ys), right = Math.max(...xs), bottom = Math.max(...ys), pad = Math.max(4, (bottom - top) * .15);
+        context.fillRect(Math.max(0, left - pad), Math.max(0, top - pad), Math.min(mask.width - left + pad, right - left + 2 * pad), Math.min(mask.height - top + pad, bottom - top + 2 * pad));
+      }
+      const response = await fetch("http://127.0.0.1:8080/api/v1/inpaint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: imageSrc, mask: mask.toDataURL("image/png") }) });
+      if (!response.ok) { const error = await response.json().catch(() => null); throw new Error(error?.detail ?? "IOPaint 修复失败，请检查本机服务。"); }
+      const blob = await response.blob();
+      const cleanSrc = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("无法读取修复后的图片。")); reader.readAsDataURL(blob); });
+      setOcrMessage("底图修复完成，正在放置可编辑文字…"); addOcrTextLayers(image, cleanSrc);
+    } catch (error) { setOcrMessage(error instanceof Error ? error.message : "修复旧文字失败，请确认 IOPaint 已启动。"); }
+    finally { setTextReplaceBusy(false); }
+  };
+  const generateOcrTextEdit = async (image: Item) => {
+    if (!image.src || !ocrLines.length) return;
+    const changes = ocrLines.filter((line) => line.text.trim()).map((line) => `“${line.originalText ?? line.text}”替换为“${line.text}”`).join("；");
+    const instruction = `请基于参考图片进行精确的图片文字修改。只修改以下识别到的文字内容：${changes}。严格保持每处文字原来的位置、字号比例、字体风格、颜色、方向、对齐方式、行数与排版；保留原图其余所有画面、图形、照片、背景、材质和构图不变。清除被替换的旧文字并自然补全其下方背景，不要叠加旧字，不要增加未列出的文字，不要生成说明、标注、水印或边框。输出与原图相同宽高比例的一张完整图片。`;
+    const promptId = crypto.randomUUID();
+    const promptNode: Item = { id: promptId, kind: "prompt", prompt: instruction, x: image.x + image.width + 90, y: image.y, width: 330, sources: [image.id] };
+    setItems((all) => [...all, promptNode]); setSelected(promptId); setSelectedIds([promptId]); setToolbarMenu(null);
+    setMessage("已创建文字修改指令，正在使用网站生图服务生成修改版…");
+    const recognizedImage = new Image(); recognizedImage.src = image.src;
+    try {
+      await recognizedImage.decode();
+      const targetAspect = recognizedImage.naturalWidth / recognizedImage.naturalHeight;
+      const availableRatios = ["16:9", "9:16", "4:3", "3:4", "1:1", "3:2", "2:3"];
+      const editRatio = availableRatios.reduce((best, candidate) => Math.abs(Number(candidate.split(":")[0]) / Number(candidate.split(":")[1]) - targetAspect) < Math.abs(Number(best.split(":")[0]) / Number(best.split(":")[1]) - targetAspect) ? candidate : best, availableRatios[0]);
+      void generate(undefined, { prompt: instruction, referenceItems: [image], sourceId: promptId, ratio: editRatio });
+    } catch { setMessage("原图无法读取，请重新导入后再尝试文字修改。"); }
   };
   const undo = () => { const previous = undoStack.current.pop(); if (!previous) { setMessage("没有可撤销的操作。"); return; } redoStack.current.push(items); historyMove.current = true; previousItems.current = previous; intentionallyEmpty.current = previous.length === 0; setItems(previous); setMessage("已撤销。按 Ctrl+Shift+Z 可重做。"); };
   const redo = () => { const next = redoStack.current.pop(); if (!next) { setMessage("没有可重做的操作。"); return; } undoStack.current.push(items); historyMove.current = true; previousItems.current = next; intentionallyEmpty.current = next.length === 0; setItems(next); setMessage("已重做。"); };
@@ -208,25 +325,29 @@ export default function Canvas() {
     const node: Item = { id, kind: "image", src, prompt: description, x: 1120 + (items.filter((item) => item.kind === "image").length % 2) * 370, y: 190 + Math.floor(items.filter((item) => item.kind === "image").length / 2) * 360, width: 330, ...(from ? { from } : {}), ...(aspectRatio ? { aspectRatio } : {}) };
     intentionallyEmpty.current = false; setItems((previous) => [...previous, node]); setSelected(id); setSelectedIds([id]);
   };
-  const generate = async (sourceId?: string) => {
+  const generate = async (sourceId?: string, editOverride?: { prompt: string; referenceItems: Item[]; sourceId: string; ratio?: string }) => {
     const source = sourceId ? items.find((item) => item.id === sourceId && item.kind === "prompt") : currentPromptNode;
-    if (!source?.prompt.trim()) { setMessage("先在描述节点里写下画面内容。"); return; }
+    const promptText = editOverride?.prompt ?? source?.prompt.trim();
+    if (!promptText) { setMessage("先在描述节点里写下画面内容。"); return; }
     setBusy(true); setMessage("正在生成图片，请稍候…");
     try {
-      const referenceNodes = (source.sources ?? []).map((id) => items.find((item) => item.id === id));
+      const referenceNodes = editOverride?.referenceItems ?? (source?.sources ?? []).map((id) => items.find((item) => item.id === id));
       if (referenceNodes.some((item) => !item?.src)) throw new Error("有参考图片已被删除，请重新连接后再生成。");
-      if (referenceNodes.length && !imageModels.find((model) => model.id === imageModel)?.references) throw new Error("这个免费模型只支持文字生图。使用参考图时请选择 FLUX.2 Klein。");
-      const references = await Promise.all(referenceNodes.map((item) => referenceDataUrl(item!.src!)));
-      const response = await fetch("/api/image-canvas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: source.prompt, ratio, style, model: imageModel, references }) });
+      const modelForRequest = editOverride ? "flux-klein" : imageModel;
+      if (referenceNodes.length && !imageModels.find((model) => model.id === modelForRequest)?.references) throw new Error("这个免费模型只支持文字生图。使用参考图时请选择 FLUX.2 Klein。");
+      const references = await Promise.all(referenceNodes.map((item) => referenceDataUrl(item!.src!, editOverride ? 1024 : 510)));
+      const requestRatio = editOverride?.ratio ?? ratio;
+      const response = await fetch("/api/image-canvas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: promptText, ratio: requestRatio, style: editOverride ? "original" : style, model: modelForRequest, references }) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error); }
       const blob = await response.blob();
       const imageId = localMode ? response.headers.get("x-canvas-image-id") : null;
       const src = imageId ? `/api/image-canvas/output?id=${encodeURIComponent(imageId)}` : await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); });
-      const pending = items.find((item) => item.kind === "image" && item.pending && item.from === source.id);
-      const cssRatio = ratio.replace(":", " / ");
-      if (pending) setItems((all) => all.map((item) => item.id === pending.id ? { ...item, src, prompt: source.prompt, pending: false, aspectRatio: cssRatio } : item));
-      else addImage(src, source.prompt, source.id, cssRatio);
-      const modelName = imageModels.find((model) => model.id === imageModel)?.name ?? "免费模型";
+      const targetId = editOverride?.sourceId ?? source?.id;
+      const pending = targetId ? items.find((item) => item.kind === "image" && item.pending && item.from === targetId) : undefined;
+      const cssRatio = requestRatio.replace(":", " / ");
+      if (pending) setItems((all) => all.map((item) => item.id === pending.id ? { ...item, src, prompt: promptText, pending: false, aspectRatio: cssRatio } : item));
+      else addImage(src, promptText, editOverride?.referenceItems[0]?.id ?? source?.id, cssRatio);
+      const modelName = imageModels.find((model) => model.id === modelForRequest)?.name ?? "免费模型";
       setMessage(references.length ? `${modelName} 已参考 ${references.length} 张图片生成新图，并连入画布。` : `${modelName} 已生成图片并连入画布。可以继续修改描述或再生成一版。`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "生成失败，请重试。"); }
     finally { setBusy(false); void refreshAccount(); }
@@ -347,8 +468,13 @@ export default function Canvas() {
   };
   const handleWheel = (event: WheelEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest("textarea,input,select")) return;
-    event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); const px = event.clientX - rect.left, py = event.clientY - rect.top;
-    setView((old) => { const zoom = clamp(old.zoom * Math.exp(-event.deltaY * .001), minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; });
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const rect = event.currentTarget.getBoundingClientRect(); const px = event.clientX - rect.left, py = event.clientY - rect.top;
+      setView((old) => { const zoom = clamp(old.zoom * Math.exp(-event.deltaY * .001), minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; });
+      return;
+    }
+    setView((old) => ({ ...old, x: old.x - (event.shiftKey ? event.deltaY : event.deltaX), y: old.y - (event.shiftKey ? 0 : event.deltaY) }));
   };
   const zoomBy = (factor: number) => { const rect = viewportRef.current?.getBoundingClientRect(); const px = (rect?.width ?? 900) / 2, py = (rect?.height ?? 650) / 2; setView((old) => { const zoom = clamp(old.zoom * factor, minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; }); };
   const fitView = () => {
@@ -513,18 +639,28 @@ export default function Canvas() {
     setItems((all) => all.map((item) => positions.has(item.id) ? { ...item, ...positions.get(item.id)! } : item)); setMessage(`${chosen.length} 个节点已排成网格。`);
   };
   const saveCanvas = () => { try { localStorage.setItem(storageKey, JSON.stringify({ items, view, ratio, savedAssetIds, customPrompts, intentionallyEmpty: intentionallyEmpty.current })); setMessage("画布已保存在当前浏览器。"); } catch { setMessage("浏览器存储空间不足，请下载重要图片后移除部分图片。"); } };
+  const dismissReleaseNotice = () => { try { localStorage.setItem(releaseNoticeKey, releaseNoticeVersion); } catch {} setShowReleaseNotice(false); };
+  const createBlankCanvas = (label = "新建画布") => {
+    if (items.length && !window.confirm(`${label}会清除当前画布上的节点和连线。已下载的图片不会受影响，是否继续？`)) return;
+    intentionallyEmpty.current = true; undoStack.current = []; redoStack.current = [];
+    setItems([]); setSelected(null); setSelectedIds([]); setSelectedEdge(null); setSavedAssetIds([]);
+    setView({ x: 70, y: 54, zoom: 0.88 }); setToolbarMenu(null); setContextMenu(null); setConnectionMenu(null);
+    setWorkflowSpaceId(""); setWorkflowReferenceId(""); setWorkflowNote(""); setSidebarTab("canvas");
+    try { localStorage.setItem(storageKey, JSON.stringify({ items: [], view: { x: 70, y: 54, zoom: 0.88 }, ratio, savedAssetIds: [], customPrompts, intentionallyEmpty: true })); } catch {}
+    setMessage("新的空白画布已建立，自动保存仍然开启。");
+  };
   const edges = items.flatMap((item) => [
     ...(item.from ? [{ sourceId: item.from, targetId: item.id, kind: "from" as const }] : []),
     ...(item.sources ?? []).map((sourceId) => ({ sourceId, targetId: item.id, kind: "reference" as const })),
   ].map((edge) => ({ ...edge, target: item, source: items.find((source) => source.id === edge.sourceId) }))).filter((edge): edge is Edge & { target: Item; source: Item } => Boolean(edge.source));
-  const nodePortY = (item: Item) => { if (item.kind === "prompt") return 125; const [width, height] = item.aspectRatio?.split("/").map(Number) ?? [4, 3]; const imageHeight = (item.width - 18) * height / width; return 43 + (item.src ? imageHeight : Math.max(190, imageHeight)) / 2; };
+  const nodePortY = (item: Item) => { if (item.kind === "prompt") return 125; if (item.kind === "text") return 62; const [width, height] = item.aspectRatio?.split("/").map(Number) ?? [4, 3]; const imageHeight = (item.width - 18) * height / width; return 43 + (item.src ? imageHeight : Math.max(190, imageHeight)) / 2; };
   const pathBetween = (source: Item, target: Item) => { const x1 = source.x + source.width, y1 = source.y + nodePortY(source), x2 = target.x, y2 = target.y + nodePortY(target), bend = Math.max(60, (x2 - x1) * .5); return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`; };
 
   return <main className={styles.page}>
     <header className={styles.header}>
       <Link className={styles.brand} href="/#lab" aria-label="返回 After Now 实验室"><span className={styles.brandMark}>A</span><span><strong>AFTER NOW</strong><small>IMAGE WORKSPACE</small></span></Link>
       <div className={styles.projectTitle}><span className={styles.liveDot} />图像创作画布 <span className={styles.projectDivider}>/</span> 未命名项目</div>
-      <div className={styles.headerActions}><span className={styles.saveState}>● 自动保存</span><button onClick={saveCanvas}>保存画布</button><details className={styles.profile}><summary aria-label={user ? "账号信息" : "登录或注册"}>{user ? user.email.slice(0, 1).toUpperCase() : "访"}</summary><div>{localMode ? <p>{authMessage}</p> : user ? <><p>{user.email}</p><p>今日剩余 {quota?.remaining ?? "—"} / {quota?.userLimit ?? "—"} 次</p><button onClick={() => accountAction("logout")}>退出登录</button></> : <form className={styles.profileForm} onSubmit={(event) => { event.preventDefault(); void accountAction("login"); }}><strong>登录以启用生图</strong><label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" minLength={8} maxLength={128} required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} /></label><div className={styles.authActions}><button disabled={authBusy} type="submit">{authBusy ? "请稍候…" : "登录"}</button><button disabled={authBusy || !email || loginPassword.length < 8} type="button" onClick={() => void accountAction("signup")}>注册</button></div><p role="status">{authMessage}</p></form>}</div></details></div>
+      <div className={styles.headerActions}><span className={styles.saveState}>● 自动保存</span><button onClick={() => createBlankCanvas("新建画布")}>＋ 新建画布</button><button onClick={saveCanvas}>保存画布</button><details className={styles.profile}><summary aria-label={user ? "账号信息" : "登录或注册"}>{user ? user.email.slice(0, 1).toUpperCase() : "访"}</summary><div>{localMode ? <p>{authMessage}</p> : user ? <><p>{user.email}</p><p>今日剩余 {quota?.remaining ?? "—"} / {quota?.userLimit ?? "—"} 次</p><button onClick={() => accountAction("logout")}>退出登录</button></> : <form className={styles.profileForm} onSubmit={(event) => { event.preventDefault(); void accountAction("login"); }}><strong>登录以启用生图</strong><label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" minLength={8} maxLength={128} required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} /></label><div className={styles.authActions}><button disabled={authBusy} type="submit">{authBusy ? "请稍候…" : "登录"}</button><button disabled={authBusy || !email || loginPassword.length < 8} type="button" onClick={() => void accountAction("signup")}>注册</button></div><p role="status">{authMessage}</p></form>}</div></details></div>
     </header>
     <div className={`${styles.workspace} ${sidebarOpen ? "" : styles.workspaceSidebarClosed}`}>
       <aside className={`${styles.librarySidebar} ${sidebarOpen ? "" : styles.librarySidebarClosed}`} aria-label="画布资料与工作流">
@@ -532,7 +668,7 @@ export default function Canvas() {
         {sidebarOpen && <><div className={styles.libraryTabs} role="tablist" aria-label="左侧面板分类">{([['canvas', '画布'], ['assets', '资产'], ['prompts', '提示词'], ['workflow', '工作流']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={sidebarTab === id} className={sidebarTab === id ? styles.libraryTabActive : ""} onClick={() => { setSidebarTab(id); setSidebarSearch(""); }}>{label}</button>)}</div>
           {sidebarTab !== "workflow" && <label className={styles.librarySearch}><Search size={15} /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder={sidebarTab === "canvas" ? "搜索节点" : sidebarTab === "assets" ? "搜索图片" : "搜索提示词"} /></label>}
           <div className={styles.libraryScroll}>
-            {sidebarTab === "canvas" && <><div className={styles.librarySectionHeading}><span>画布节点 · {items.length}</span><button onClick={() => addNode("prompt")}>＋</button></div>{items.filter((item) => !sidebarSearch || item.prompt.toLowerCase().includes(sidebarSearch.toLowerCase()) || item.kind.includes(sidebarSearch.toLowerCase())).map((item) => <button className={`${styles.libraryRow} ${selected === item.id ? styles.libraryRowActive : ""}`} key={item.id} onClick={() => focusNode(item.id)}>{item.kind === "image" ? <ImageIcon size={16} /> : <FileText size={16} />}<span><strong>{item.kind === "image" ? "图片" : "描述"}</strong><small>{item.prompt || "未命名节点"}</small></span></button>)}<div className={styles.workflowTeaser}><strong>空间场景工作流</strong><p>指定空间图与参考图，建立双图生图流程。</p><button onClick={() => setSidebarTab("workflow")}>打开工作流 ↗</button></div></>}
+            {sidebarTab === "canvas" && <><div className={styles.librarySectionHeading}><span>画布节点 · {items.length}</span><button onClick={() => addNode("prompt")}>＋</button></div>{items.filter((item) => !sidebarSearch || item.prompt.toLowerCase().includes(sidebarSearch.toLowerCase()) || item.kind.includes(sidebarSearch.toLowerCase())).map((item) => <button className={`${styles.libraryRow} ${selected === item.id ? styles.libraryRowActive : ""}`} key={item.id} onClick={() => focusNode(item.id)}>{item.kind === "image" ? <ImageIcon size={16} /> : item.kind === "text" ? <Type size={16} /> : <FileText size={16} />}<span><strong>{item.kind === "image" ? "图片图层" : item.kind === "text" ? "文字图层" : "描述"}</strong><small>{item.prompt || "未命名节点"}</small></span></button>)}<div className={styles.workflowTeaser}><strong>空间场景工作流</strong><p>指定空间图与参考图，建立双图生图流程。</p><button onClick={() => setSidebarTab("workflow")}>打开工作流 ↗</button></div></>}
             {sidebarTab === "assets" && <><div className={styles.librarySectionHeading}><span>画布图片 · {items.filter((item) => item.kind === "image" && item.src).length}</span><button onClick={() => imageInputRef.current?.click()}>导入</button></div>{items.filter((item) => item.kind === "image" && item.src && (!sidebarSearch || item.prompt.toLowerCase().includes(sidebarSearch.toLowerCase()))).sort((a, b) => Number(savedAssetIds.includes(b.id)) - Number(savedAssetIds.includes(a.id))).map((item) => <button className={`${styles.libraryRow} ${selected === item.id ? styles.libraryRowActive : ""}`} key={item.id} onClick={() => focusNode(item.id)}><img src={item.src} alt="" /><span><strong>{savedAssetIds.includes(item.id) ? "★ " : ""}{item.prompt || "未命名图片"}</strong><small>点击定位到画布</small></span></button>)}{!items.some((item) => item.kind === "image" && item.src) && <p className={styles.libraryEmpty}>还没有图片。导入图片后会出现在这里。</p>}</>}
             {sidebarTab === "prompts" && <><div className={styles.librarySectionHeading}><span>提示词库</span><button disabled={current?.kind !== "prompt"} onClick={saveCurrentPrompt}>保存当前</button></div>{[...customPrompts, ...starterPrompts].filter((item) => !sidebarSearch || `${item.title} ${item.text} ${item.group}`.toLowerCase().includes(sidebarSearch.toLowerCase())).map((template) => <button className={styles.promptLibraryRow} key={template.id} onClick={() => applyPromptTemplate(template)}><small>{template.group}</small><strong>{template.title}</strong><span>{template.text}</span></button>)}</>}
             {sidebarTab === "workflow" && <div className={styles.workflowForm}><small>一键工作流模板</small><h3>选择要完成的任务</h3><div className={styles.workflowTemplates}>{([{ id: "rebuild", name: "空间重建", note: "空间尺度 × 参考风格" }, { id: "fusion", name: "溶图融合", note: "保留原空间装修" }, { id: "product", name: "产品置入", note: "家具产品场景化" }, { id: "angles", name: "同空间多角度", note: "保持项目连续性" }] as const).map((template) => <button key={template.id} className={workflowTemplate === template.id ? styles.workflowTemplateActive : ""} onClick={() => { setWorkflowTemplate(template.id); setWorkflowMode(template.id === "fusion" ? "fusion" : "rebuild"); }}><strong>{workflowTemplate === template.id ? "✓ " : ""}{template.name}</strong><small>{template.note}</small></button>)}</div><p>模型按顺序读取：图1 是空间或底图，图2 是风格、产品或补充参考。</p><label>图1 · 空间/底图<select value={workflowSpaceId} onChange={(event) => setWorkflowSpaceId(event.target.value)}><option value="">请选择图1</option>{items.filter((item) => item.kind === "image" && item.src).map((item) => <option key={item.id} value={item.id}>{item.prompt || item.id.slice(0, 8)}</option>)}</select></label><label>图2 · 参考/产品<select value={workflowReferenceId} onChange={(event) => setWorkflowReferenceId(event.target.value)}><option value="">请选择图2</option>{items.filter((item) => item.kind === "image" && item.src).map((item) => <option key={item.id} value={item.id}>{item.prompt || item.id.slice(0, 8)}</option>)}</select></label><label>补充要求（可选）<textarea value={workflowNote} onChange={(event) => setWorkflowNote(event.target.value)} placeholder="例如：保留参考图的木质家具与暖光" /></label><button className={styles.workflowStart} disabled={!workflowSpaceId || !workflowReferenceId || workflowSpaceId === workflowReferenceId} onClick={startSpatialWorkflow}>建立所选工作流 ↗</button><p className={styles.workflowFootnote}>建立节点不会消耗生图次数；确认描述并点击生成后才会请求模型。</p></div>}
@@ -555,14 +691,16 @@ export default function Canvas() {
         <nav className={styles.rail} aria-label="画布工具">
           <button aria-label="添加创作节点" title="添加创作节点" onClick={() => setShowNodeMenu((value) => !value)}>＋</button>
           <button aria-label="导入图片" title="导入图片" onClick={() => imageInputRef.current?.click()}>图片</button>
+          <button aria-label={current?.kind === "image" ? "提取图片文字" : "添加文字图层"} title={current?.kind === "image" ? "提取图片文字" : "添加可编辑文字"} onClick={() => { if (current?.kind === "image") { setOcrLines([]); setOcrMessage(""); setToolbarMenu("editText"); } else addNode("text"); }}><Type size={16} /></button>
           <button aria-label="自动整理画布" title="整理画布" onClick={fitView}>整理</button>
           <button aria-label="保存画布" title="保存画布" onClick={saveCanvas}>存档</button>
         </nav>
-        {showNodeMenu && <div className={styles.nodeMenu}><small>添加到画布</small><button onClick={() => addNode("prompt")}>文字描述节点</button><button onClick={() => { setShowNodeMenu(false); imageInputRef.current?.click(); }}>导入图片节点</button><button onClick={() => addNode("image")}>空白图片节点</button></div>}
+        {showNodeMenu && <div className={styles.nodeMenu}><small>添加到画布</small><button onClick={() => addNode("prompt")}>画面描述节点</button><button onClick={() => { setShowNodeMenu(false); imageInputRef.current?.click(); }}>导入图片节点</button><button onClick={() => addNode("image")}>空白图片节点</button><button onClick={() => addNode("text")}>可编辑文字图层</button></div>}
         {contextMenu && <div className={styles.contextMenu} data-canvas-context-menu style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
           {contextMenu.target.kind === "edge" ? <><small>连接线</small><button role="menuitem" onClick={() => disconnectEdge(contextMenu.target.kind === "edge" ? contextMenu.target.edge : selectedEdge!)}>断开连接 <kbd>Del</kbd></button></> : contextMenu.target.kind === "node" ? <><small>节点</small><button role="menuitem" onClick={() => contextMenu.target.kind === "node" && duplicateNode(contextMenu.target.id)}>复制节点</button><button role="menuitem" onClick={() => contextMenu.target.kind === "node" && removeNode(contextMenu.target.id)}>删除节点 <kbd>Del</kbd></button></> : <>
             <button role="menuitem" onClick={() => { setContextMenu(null); imageInputRef.current?.click(); }}>上传图片</button>
             <button role="menuitem" onClick={() => { setContextMenu(null); addNode("prompt"); }}>添加描述节点</button>
+            <button role="menuitem" onClick={() => createBlankCanvas("清空画布")}>清空画布</button>
             <hr />
             <button role="menuitem" disabled={!undoStack.current.length} onClick={() => { setContextMenu(null); undo(); }}>撤销 <kbd>Ctrl Z</kbd></button>
             <button role="menuitem" disabled={!redoStack.current.length} onClick={() => { setContextMenu(null); redo(); }}>重做 <kbd>Ctrl Shift Z</kbd></button>
@@ -586,11 +724,10 @@ export default function Canvas() {
               </g>)}
               {connectPoint && (() => { const source = items.find((item) => item.id === connectPoint.id); const portY = source ? nodePortY(source) : 0; return source ? <path className={styles.draftEdge} d={`M ${source.x + source.width} ${source.y + portY} C ${source.x + source.width + 80} ${source.y + portY}, ${connectPoint.x - 80} ${connectPoint.y}, ${connectPoint.x} ${connectPoint.y}`} /> : null; })()}
             </svg>
-              {items.map((item) => <article key={item.id} data-node-id={item.id} data-node-type={item.kind} className={`${styles.node} ${item.kind === "prompt" ? styles.promptNode : styles.imageNode} ${selectedIds.includes(item.id) ? styles.selectedNode : ""}`} style={{ left: item.x, top: item.y, width: item.width }} onPointerDown={(event) => beginNodeDrag(event, item)}>
-              <div className={styles.nodeHeader}><span className={`${styles.nodeTypeDot} ${item.kind === "image" ? styles.imageTypeDot : ""}`} />{item.kind === "prompt" ? "画面描述" : "图像结果"}<span className={styles.nodeStatus}>{item.pending ? "等待生成" : item.src ? "已完成" : "素材"}</span><button className={styles.nodeMore} aria-label="删除此节点" onClick={(event) => { event.stopPropagation(); const next = items.filter((node) => node.id !== item.id).map((node) => ({ ...node, ...(node.from === item.id ? { from: undefined } : {}), ...(node.sources ? { sources: node.sources.filter((id) => id !== item.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); if (selected === item.id) setSelected(null); }}>×</button></div>
-              {item.kind === "prompt" ? <div className={styles.promptSurface}><small>IMAGE PROMPT</small>{Boolean(item.sources?.length) && <div className={styles.referenceStrip}>{item.sources?.map((id, index) => { const reference = items.find((node) => node.id === id); return reference?.src ? <span key={id}><img src={reference.src} alt={`参考图 ${index + 1}`} /><b>图{index + 1}</b><button aria-label={`移除参考图 ${index + 1}`} title="取消这张参考图" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setItems((all) => all.map((node) => node.id === item.id ? { ...node, sources: node.sources?.filter((sourceId) => sourceId !== id) } : node)); }}>×</button></span> : null; })}<small>参考图片</small></div>}<textarea aria-label="画面描述" value={item.prompt} placeholder="写下你想生成的画面…" onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setItems((all) => all.map((node) => node.id === item.id ? { ...node, prompt: event.target.value } : node))} /><button onClick={(event) => { event.stopPropagation(); setSelected(item.id); void generate(item.id); }} disabled={busy || !canGenerate}>{busy ? "生成中…" : "生成图片 ↗"}</button></div> : <div className={styles.imageSurface}>
+              {items.map((item) => <article key={item.id} data-node-id={item.id} data-node-type={item.kind} className={`${styles.node} ${item.kind === "prompt" ? styles.promptNode : item.kind === "text" ? styles.textNode : styles.imageNode} ${selectedIds.includes(item.id) ? styles.selectedNode : ""}`} style={{ left: item.x, top: item.y, width: item.width }} onPointerDown={(event) => beginNodeDrag(event, item)}>
+              {item.kind !== "text" && <div className={styles.nodeHeader}><span className={`${styles.nodeTypeDot} ${item.kind === "image" ? styles.imageTypeDot : ""}`} />{item.kind === "prompt" ? "画面描述" : "图像结果"}<span className={styles.nodeStatus}>{item.pending ? "等待生成" : item.src ? "已完成" : "素材"}</span><button className={styles.nodeMore} aria-label="删除此节点" onClick={(event) => { event.stopPropagation(); const next = items.filter((node) => node.id !== item.id).map((node) => ({ ...node, ...(node.from === item.id ? { from: undefined } : {}), ...(node.sources ? { sources: node.sources.filter((id) => id !== item.id) } : {}) })); intentionallyEmpty.current = next.length === 0; setItems(next); if (selected === item.id) setSelected(null); }}>×</button></div>}
+              {item.kind === "prompt" ? <div className={styles.promptSurface}><small>IMAGE PROMPT</small>{Boolean(item.sources?.length) && <div className={styles.referenceStrip}>{item.sources?.map((id, index) => { const reference = items.find((node) => node.id === id); return reference?.src ? <span key={id}><img src={reference.src} alt={`参考图 ${index + 1}`} /><b>图{index + 1}</b><button aria-label={`移除参考图 ${index + 1}`} title="取消这张参考图" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setItems((all) => all.map((node) => node.id === item.id ? { ...node, sources: node.sources?.filter((sourceId) => sourceId !== id) } : node)); }}>×</button></span> : null; })}<small>参考图片</small></div>}<textarea aria-label="画面描述" value={item.prompt} placeholder="写下你想生成的画面…" onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setItems((all) => all.map((node) => node.id === item.id ? { ...node, prompt: event.target.value } : node))} /><button onClick={(event) => { event.stopPropagation(); setSelected(item.id); void generate(item.id); }} disabled={busy || !canGenerate}>{busy ? "生成中…" : "生成图片 ↗"}</button></div> : item.kind === "text" ? <div className={styles.textSurface}><textarea aria-label="编辑画布文字" value={item.prompt} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setItems((all) => all.map((node) => node.id === item.id ? { ...node, prompt: event.target.value } : node))} style={{ fontSize: `${item.fontSize ?? 32}px`, fontFamily: item.fontFamily ?? "Arial, sans-serif", color: item.color ?? "#f1f3ef", textAlign: item.textAlign ?? "left", fontWeight: item.fontWeight ?? 400 }} /></div> : <div className={styles.imageSurface}>
               {item.src ? <img src={item.src} alt={item.prompt || "生成的图像"} draggable={false} style={item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined} onLoad={(event) => { if (!item.aspectRatio) { const value = `${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`; setItems((all) => all.map((node) => node.id === item.id ? { ...node, aspectRatio: value } : node)); } }} /> : <div className={styles.imagePlaceholder} style={{ aspectRatio: item.aspectRatio ?? "4 / 3" }}><span>{item.pending ? "生成结果将出现在这里" : "导入或生成一张图片"}</span></div>}
-                {item.src && <div className={styles.imageQuickActions} onPointerDown={(event) => event.stopPropagation()}><button onClick={(event) => { event.stopPropagation(); continueFromImage(item); }}>继续生图</button><button onClick={(event) => { event.stopPropagation(); useAsReference(item); }}>设为参考</button><button onClick={(event) => { event.stopPropagation(); setSelected(item.id); setSelectedIds([item.id]); setToolbarMenu("upscale"); }}>高清放大</button><a href={item.src} download={`after-now-${item.id}.png`} onClick={(event) => event.stopPropagation()}>下载</a><button className={styles.quickDanger} onClick={(event) => { event.stopPropagation(); removeNode(item.id); }}>删除</button></div>}
                 <footer><span>{item.prompt || "未命名图像"}</span>{item.src && <a href={item.src} download={`after-now-${item.id}.png`} onPointerDown={(event) => event.stopPropagation()}>下载 ↓</a>}</footer>
               </div>}
               <button className={`${styles.port} ${styles.inputPort}`} style={{ top: nodePortY(item) }} data-port="input" data-node-id={item.id} aria-label="连接输入" title="连接输入" onPointerDown={(event) => event.stopPropagation()} />
@@ -610,6 +747,17 @@ export default function Canvas() {
             <button title="导出节点数据" aria-label="导出节点数据" onClick={() => exportNode(current)}><Share2 size={17} /></button>
             <button title="下一次生成的风格" aria-label="下一次生成的风格" onClick={() => setToolbarMenu(toolbarMenu === "style" ? null : "style")}><Paintbrush size={17} /></button>
             <button title="居中裁切图片" aria-label="居中裁切图片" disabled={!current.src} onClick={() => setToolbarMenu(toolbarMenu === "crop" ? null : "crop")}><Scissors size={17} /></button>
+            {current.kind === "image" && <>
+              <button title="橡皮工具" aria-label="橡皮工具" disabled={!current.src} onClick={() => setAssetEditor("erase")}><Eraser size={17} /></button>
+              <button title="手动拆分图层" aria-label="手动拆分图层" disabled={!current.src} onClick={() => setAssetEditor("split")}><Layers2 size={17} /></button>
+              <button title="提取图片文字" aria-label="提取图片文字" disabled={!current.src} onClick={() => { setOcrLines([]); setOcrMessage(""); setToolbarMenu("editText"); }}><Type size={17} /></button>
+            </>}
+            {current.kind === "text" && <>
+              <button title="文字样式" aria-label="文字样式" onClick={() => setToolbarMenu(toolbarMenu === "text" ? null : "text")}><Type size={17} /></button>
+              <button title="左对齐" aria-label="左对齐" onClick={() => setItems((all) => all.map((item) => item.id === current.id ? { ...item, textAlign: "left" } : item))}><AlignLeft size={17} /></button>
+              <button title="居中对齐" aria-label="居中对齐" onClick={() => setItems((all) => all.map((item) => item.id === current.id ? { ...item, textAlign: "center" } : item))}><AlignCenter size={17} /></button>
+              <button title="右对齐" aria-label="右对齐" onClick={() => setItems((all) => all.map((item) => item.id === current.id ? { ...item, textAlign: "right" } : item))}><AlignRight size={17} /></button>
+            </>}
             <button title="免费高清放大" aria-label="免费高清放大" disabled={!current.src} onClick={() => setToolbarMenu(toolbarMenu === "upscale" ? null : "upscale")}><ZoomIn size={17} /></button>
             <button title="选中节点排成网格" aria-label="选中节点排成网格" disabled={selectedIds.length < 2} onClick={arrangeSelected}><Grid2X2 size={17} /></button>
             <button title="放大并定位节点" aria-label="放大并定位节点" onClick={() => focusNode(current.id, true)}><ZoomIn size={17} /></button>
@@ -618,9 +766,11 @@ export default function Canvas() {
           </> : <><button onClick={() => setShowNodeMenu((value) => !value)}><b>＋</b>添加节点</button><i /><button onClick={fitView}>整理画布</button><i /><button disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? "正在生成…" : "▶ 运行生图"}</button><span className={styles.toolbarMode}><span className={styles.liveDot} />拖出选框 · 空格拖动画布</span></>}
         </div>
         {current && toolbarMenu && <div className={styles.nodeToolPanel}>
-          {toolbarMenu === "info" && <><strong>{current.kind === "image" ? "图片节点" : "描述节点"}</strong><p>{current.kind === "image" ? current.src ? "已生成或导入" : "等待生成" : `${current.prompt.length} 字符`}</p><p>连接：{edges.filter((edge) => edge.sourceId === current.id || edge.targetId === current.id).length} 条</p></>}
+          {toolbarMenu === "info" && <><strong>{current.kind === "image" ? "图片图层" : current.kind === "text" ? "文字图层" : "描述节点"}</strong><p>{current.kind === "image" ? current.src ? "已生成或导入" : "等待生成" : `${current.prompt.length} 字符`}</p><p>连接：{edges.filter((edge) => edge.sourceId === current.id || edge.targetId === current.id).length} 条</p></>}
           {toolbarMenu === "style" && <><strong>下一次生成的视觉方向</strong>{([['after', '实验视觉'], ['photo', '电影摄影'], ['original', '原始描述']] as const).map(([value, label]) => <button key={value} onClick={() => { setStyle(value); setToolbarMenu(null); setMessage(`已选择${label}。`); }}>{style === value ? "✓ " : ""}{label}</button>)}</>}
           {toolbarMenu === "crop" && <><strong>图片居中裁切</strong><select value={cropRatio} onChange={(event) => setCropRatio(event.target.value)}><option value="1:1">1:1 方形</option><option value="16:9">16:9 横图</option><option value="9:16">9:16 竖图</option><option value="4:3">4:3 横图</option><option value="3:4">3:4 竖图</option></select><button onClick={() => void cropCurrentImage()}>应用裁切</button></>}
+          {toolbarMenu === "editText" && current.kind === "image" && <><strong>提取并修改图片文字</strong><p>识别整张图片上的文字，逐项改好后，直接调用网站的 FLUX.2 Klein 参考图生图，生成一张新图片；无需启动本机 OCR 或 IOPaint。</p><button onClick={() => void recognizeImageText(current)} disabled={ocrBusy || textReplaceBusy}>{ocrBusy ? "正在识别…" : "识别整张图片"}</button>{ocrMessage && <small className={styles.ocrMessage}>{ocrMessage}</small>}{ocrLines.length > 0 && <><div className={styles.ocrResults}>{ocrLines.map((line, index) => <label key={`${index}-${line.originalText ?? line.text}`}><span>文字 {index + 1}{line.score !== null ? ` · ${Math.round(line.score * 100)}%` : ""}</span><textarea value={line.text} onChange={(event) => setOcrLines((all) => all.map((entry, entryIndex) => entryIndex === index ? { ...entry, text: event.target.value } : entry))} /></label>)}</div><button onClick={() => void generateOcrTextEdit(current)} disabled={busy || textReplaceBusy || !canGenerate}>AI 重绘并替换全部文字 ↗</button><button onClick={() => addOcrTextLayers(current)} disabled={textReplaceBusy}>复制到右侧并拆分文字</button><small className={styles.ocrFootnote}>原图保留；右侧会复制底图并按识别位置放置独立文字层，文字层不连线。AI 重绘会消耗一次网站生图额度。</small></>}</>}
+          {toolbarMenu === "text" && current.kind === "text" && <><strong>文字排版</strong><label className={styles.textSetting}>字体<select value={current.fontFamily ?? "Arial, Microsoft YaHei, sans-serif"} onChange={(event) => setItems((all) => all.map((item) => item.id === current.id ? { ...item, fontFamily: event.target.value } : item))}><option value="Arial, Microsoft YaHei, sans-serif">无衬线</option><option value="Georgia, Microsoft YaHei, serif">衬线</option><option value="Microsoft YaHei, sans-serif">微软雅黑</option><option value="SimSun, serif">宋体</option></select></label><label className={styles.textSetting}>字号<input type="number" min="8" max="160" value={current.fontSize ?? 32} onChange={(event) => setItems((all) => all.map((item) => item.id === current.id ? { ...item, fontSize: clamp(Number(event.target.value) || 8, 8, 160) } : item))} /></label><label className={styles.textSetting}>文字颜色<input type="color" value={current.color ?? "#f1f3ef"} onChange={(event) => setItems((all) => all.map((item) => item.id === current.id ? { ...item, color: event.target.value } : item))} /></label><label className={styles.textSetting}>字重<select value={current.fontWeight ?? 400} onChange={(event) => setItems((all) => all.map((item) => item.id === current.id ? { ...item, fontWeight: Number(event.target.value) } : item))}><option value="400">常规</option><option value="600">半粗</option><option value="700">粗体</option></select></label><div className={styles.textAlignChoices}><span>对齐</span><button aria-label="左对齐" aria-pressed={(current.textAlign ?? "left") === "left"} onClick={() => setItems((all) => all.map((item) => item.id === current.id ? { ...item, textAlign: "left" } : item))}><AlignLeft size={16} /></button><button aria-label="居中对齐" aria-pressed={current.textAlign === "center"} onClick={() => setItems((all) => all.map((item) => item.id === current.id ? { ...item, textAlign: "center" } : item))}><AlignCenter size={16} /></button><button aria-label="右对齐" aria-pressed={current.textAlign === "right"} onClick={() => setItems((all) => all.map((item) => item.id === current.id ? { ...item, textAlign: "right" } : item))}><AlignRight size={16} /></button></div></>}
           {toolbarMenu === "upscale" && <><strong>免费高清放大</strong><p>在浏览器中导出更大的 PNG，不消耗生图次数。</p><select value={upscaleFactor} onChange={(event) => setUpscaleFactor(Number(event.target.value) as 2 | 4)}><option value="2">2× 高清</option><option value="4">4× 超高清</option></select><button onClick={() => void downloadUpscaledImage()}>放大并下载</button><small>当前为高清插值；AI 补细节版稍后可连接本地 Real-ESRGAN。</small></>}
           {toolbarMenu === "more" && <><strong>更多操作</strong>{current.kind === "prompt" && <button onClick={() => { saveCurrentPrompt(); setToolbarMenu(null); }}>保存到提示词库</button>}<button onClick={() => { focusNode(current.id); setToolbarMenu(null); }}>定位到画布中央</button><button onClick={() => { exportNode(current); setToolbarMenu(null); }}>导出节点备份</button></>}
         </div>}
@@ -629,7 +779,7 @@ export default function Canvas() {
       </section>
       <aside className={styles.inspector}>
         <div className={styles.inspectorHeader}><div><small>AFTER NOW / IMAGE AGENT</small><h2>创作助手</h2></div><button aria-label="保存画布" title="保存画布" onClick={saveCanvas}>存档</button></div>
-        <div className={styles.assistantContext}><span className={styles.agentAvatar}>A</span><div><strong>画布协作中</strong><small>{current ? `正在编辑${current.kind === "prompt" ? "画面描述" : "图像结果"}节点` : "选择一个节点开始编辑"}</small></div><span className={styles.liveDot} /></div>
+        <div className={styles.assistantContext}><span className={styles.agentAvatar}>A</span><div><strong>画布协作中</strong><small>{current ? `正在编辑${current.kind === "prompt" ? "画面描述" : current.kind === "text" ? "文字图层" : "图像结果"}节点` : "选择一个节点开始编辑"}</small></div><span className={styles.liveDot} /></div>
         <div className={styles.inspectorScroll}>
           <section className={styles.section}><div className={styles.sectionHeading}><span>01 / 画面描述</span><button onClick={() => addNode("prompt")}>＋ 新描述</button></div>
             {currentPromptNode?.sources?.length ? <p className={styles.referenceHint}>已连接 {currentPromptNode.sources.length} 张参考图。描述图1、图2各要保留的空间、建筑或风格，再点击生成。</p> : <p className={styles.referenceHint}>想按已有图片生成？把图片右侧圆点拖到描述节点左侧圆点；也可以把两张图片直接相连。</p>}
@@ -643,7 +793,9 @@ export default function Canvas() {
         <footer className={styles.inspectorFooter}><span>AFTER NOW IMAGE CANVAS</span><Link href="/#lab">返回实验室 ↗</Link></footer>
       </aside>
     </div>
-    {previewId && items.find((item) => item.id === previewId)?.src && <div className={styles.previewOverlay} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewId(null)}><button aria-label="关闭预览" onClick={() => setPreviewId(null)}>×</button><img src={items.find((item) => item.id === previewId)!.src} alt="图片预览" onClick={(event) => event.stopPropagation()} /></div>}
+        {previewId && items.find((item) => item.id === previewId)?.src && <div className={styles.previewOverlay} role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewId(null)}><button aria-label="关闭预览" onClick={() => setPreviewId(null)}>×</button><img src={items.find((item) => item.id === previewId)!.src} alt="图片预览" onClick={(event) => event.stopPropagation()} /></div>}
+        {assetEditor && current?.kind === "image" && current.src && <AssetEditor src={current.src} mode={assetEditor} onClose={() => setAssetEditor(null)} onApply={(src, label, bounds, sourceSize, originalSrc) => addImageLayer(src, `${current.prompt} · ${label}`, bounds, sourceSize, current, originalSrc)} />}
+        {showReleaseNotice && <div className={styles.releaseOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissReleaseNotice(); }}><section className={styles.releaseDialog} role="dialog" aria-modal="true" aria-labelledby="release-title"><button className={styles.releaseClose} onClick={dismissReleaseNotice} aria-label="关闭更新说明">×</button><small>AFTER NOW / CANVAS UPDATE</small><h2 id="release-title">画布更新了</h2><p>现在可以在画布里直接修改图片中的整组文字：</p><ul><li><strong>识别整张图片</strong><span>浏览器本地识别中文和英文，逐项检查、编辑识别结果。</span></li><li><strong>AI 重绘并替换全部文字</strong><span>把原图和替换内容送入网站生图服务，保留原图并生成修改版。</span></li><li><strong>无连线文字拆层</strong><span>原图保留，底图复制到右侧，识别文字按位置拆成独立图层，不再显示多余连接线。</span></li></ul><footer><span>关闭后，本版本更新说明不会在刷新时再次出现。</span><button onClick={dismissReleaseNotice}>知道了</button></footer></section></div>}
   </main>;
 }
 

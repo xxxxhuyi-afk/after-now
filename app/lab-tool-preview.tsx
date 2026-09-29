@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
 
 const tools = {
+  ppt: { src: "/ppt/index.html", title: "PPT Optimizer", description: "内容与参考图 → 可编辑演示文稿" },
   zaozao: { src: "/zaozao/index.html", title: "小胡造造造", description: "文字与图像 → 立体模型" },
   canvas: { src: "/lab/image-canvas", title: "生图画布", description: "生成图像 · 自由排列 · 保存创作" },
   paper: { src: "/lab/generative-form", title: "纸卷游乐场", description: "拖动纸卷，让图像沿途展开" },
