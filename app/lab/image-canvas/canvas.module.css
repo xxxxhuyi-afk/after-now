@@ -79,4 +79,25 @@
 .previewOverlay img { display:block; max-width:100%; max-height:100%; object-fit:contain; box-shadow:0 20px 60px #000b; }
 .previewOverlay button { position:absolute; right:18px; top:14px; width:36px; height:36px; border:1px solid #59615c; border-radius:50%; color:#fff; background:#202625; font-size:22px; cursor:pointer; }
 @media(max-width:760px) { .nodeToolbar { left:50%; }.nodeToolPanel { top:55px; }.zoomControls input { width:55px; }.previewOverlay { padding:32px 10px; } }
+.modelPicker { margin-top:15px; color:#87908e; font-size:10px; }
+.modelPicker>div { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
+.modelPicker button { min-height:58px; display:grid; align-content:center; gap:5px; padding:9px; border:1px solid #353c3d; border-radius:7px; color:#c2c9c4; background:#191d1f; text-align:left; cursor:pointer; }
+.modelPicker button:hover:not(:disabled) { border-color:#819644; }
+.modelPicker button strong { font-size:10px; }
+.modelPicker button small { color:#79837e; font-size:8px; line-height:1.35; }
+.modelPicker .activeModel { border-color:#91aa48; color:var(--accent); background:#242b1d; box-shadow:inset 0 0 0 1px #d9ff5214; }
+.modelPicker .comingModel { border-style:dashed; color:#787f7b; background:#151819; cursor:not-allowed; opacity:.72; }
+.imageSurface { position:relative; }
+.imageQuickActions { position:absolute; left:50%; top:18px; z-index:4; display:flex; gap:3px; max-width:calc(100% - 24px); padding:5px; border:1px solid #ffffff26; border-radius:8px; background:#101315e8; box-shadow:0 8px 24px #0009; opacity:0; transform:translate(-50%,-6px); transition:opacity .15s,transform .15s; pointer-events:none; }
+.imageSurface:hover .imageQuickActions,.selectedNode .imageQuickActions { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+.imageQuickActions button,.imageQuickActions a { flex:none; border:0; border-radius:5px; padding:6px 7px; color:#dce3dd; background:transparent; font-size:9px; line-height:1; text-decoration:none; cursor:pointer; white-space:nowrap; }
+.imageQuickActions button:hover,.imageQuickActions a:hover { color:#111; background:var(--accent); }
+.imageQuickActions .quickDanger:hover { color:#fff; background:#9d3e3e; }
+.workflowTemplates { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.workflowTemplates button { display:grid; gap:3px; min-height:58px; padding:9px; border:1px solid #374040; border-radius:7px; color:#dbe1da; background:#1d2223; text-align:left; cursor:pointer; }
+.workflowTemplates button:hover { border-color:#6f803d; }
+.workflowTemplates button strong { font-size:10px; }
+.workflowTemplates button small { color:#89938d; font-size:8px; line-height:1.4; }
+.workflowTemplates .workflowTemplateActive { border-color:#a9c849; background:#252d1e; box-shadow:inset 0 0 0 1px #a9c84933; }
+.workflowTemplates .workflowTemplateActive strong { color:#d9ff52; }
 
