@@ -469,12 +469,17 @@ export default function Canvas() {
   const handleWheel = (event: WheelEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest("textarea,input,select")) return;
     event.preventDefault();
-    if (event.ctrlKey || event.metaKey) {
+    // The canvas follows common design-tool behavior: vertical wheel zooms at
+    // the pointer, while Space/Shift or a horizontal trackpad gesture pans.
+    const panGesture = spaceHeld.current || event.shiftKey || (Math.abs(event.deltaX) > Math.abs(event.deltaY) * 1.2 && !event.ctrlKey && !event.metaKey);
+    if (!panGesture) {
       const rect = event.currentTarget.getBoundingClientRect(); const px = event.clientX - rect.left, py = event.clientY - rect.top;
-      setView((old) => { const zoom = clamp(old.zoom * Math.exp(-event.deltaY * .001), minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; });
+      const delta = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? rect.height : 1);
+      setView((old) => { const zoom = clamp(old.zoom * Math.exp(-delta * .0012), minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; });
       return;
     }
-    setView((old) => ({ ...old, x: old.x - (event.shiftKey ? event.deltaY : event.deltaX), y: old.y - (event.shiftKey ? 0 : event.deltaY) }));
+    const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? 500 : 1;
+    setView((old) => ({ ...old, x: old.x - (event.shiftKey ? event.deltaY * scale : event.deltaX * scale), y: old.y - (event.shiftKey ? 0 : event.deltaY * scale) }));
   };
   const zoomBy = (factor: number) => { const rect = viewportRef.current?.getBoundingClientRect(); const px = (rect?.width ?? 900) / 2, py = (rect?.height ?? 650) / 2; setView((old) => { const zoom = clamp(old.zoom * factor, minZoom, maxZoom); return { zoom, x: px - (px - old.x) * zoom / old.zoom, y: py - (py - old.y) * zoom / old.zoom }; }); };
   const fitView = () => {
