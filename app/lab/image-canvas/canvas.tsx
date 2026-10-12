@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlignCenter, AlignLeft, AlignRight, BookmarkPlus, Check, Copy, Download, Ellipsis, Expand, Eraser, FileText, FolderPlus, Grid2X2, Image as ImageIcon, Info, Layers2, PanelLeftClose, PanelLeftOpen, Paintbrush, Scissors, Search, Share2, Trash2, Type, ZoomIn } from "lucide-react";
 import styles from "./canvas.module.css";
 import AssetEditor from "./asset-editor";
-import { runImageBatch, type ImageCount } from "./image-batch";
+import { readImageBatch, type ImageCount } from "./image-batch";
 
 type Item = { id: string; kind: "prompt" | "image" | "text"; src?: string; prompt: string; x: number; y: number; width: number; from?: string; sources?: string[]; pending?: boolean; aspectRatio?: string; fontSize?: number; fontFamily?: string; color?: string; textAlign?: "left" | "center" | "right"; fontWeight?: number };
 type Viewport = { x: number; y: number; zoom: number };
@@ -109,9 +109,7 @@ export default function Canvas() {
   const [busy, setBusy] = useState(false);
   const [imageCount, setImageCount] = useState<ImageCount>(1);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 1 });
-  const [batchStopping, setBatchStopping] = useState(false);
   const generationLock = useRef(false);
-  const stopBatch = useRef(false);
   const [message, setMessage] = useState("空白处拖出选框；拖动选中节点可一起移动，按住空格拖动画布。");
   const [view, setView] = useState<Viewport>({ x: 70, y: 54, zoom: 0.88 });
   const [ready, setReady] = useState(false);
@@ -340,9 +338,10 @@ export default function Canvas() {
     if (!localMode && quota && Math.min(quota.remaining, quota.globalRemaining) < count) {
       setMessage(`当前可用额度不足 ${count} 次，请减少生成张数。`); return;
     }
-    generationLock.current = true; stopBatch.current = false;
-    setBusy(true); setBatchStopping(false); setBatchProgress({ current: 0, total: count });
+    generationLock.current = true;
+    setBusy(true); setBatchProgress({ current: 0, total: count });
     setMessage(`准备生成 ${count} 张图片…`);
+    let completedCount = 0;
     try {
       const referenceNodes = editOverride?.referenceItems ?? (source?.sources ?? []).map((id) => items.find((item) => item.id === id));
       if (referenceNodes.some((item) => !item?.src)) throw new Error("有参考图片已被删除，请重新连接后再生成。");
@@ -357,41 +356,44 @@ export default function Canvas() {
       const rowHeight = Math.max(220, 330 * ratioHeight / ratioWidth + 110);
       const anchorX = pending?.x ?? Math.max(source ? source.x + source.width + 110 : 1120, ...items.filter((item) => item.kind === "image" && item.from === targetId).map((item) => item.x + item.width + 40));
       const anchorY = pending?.y ?? source?.y ?? 190;
-      const result = await runImageBatch({
-        count,
-        shouldStop: () => stopBatch.current,
-        onProgress: (index) => {
-          setBatchProgress({ current: index + 1, total: count });
-          setMessage(`正在生成第 ${index + 1} / ${count} 张图片…`);
-        },
-        generate: async () => {
-          const response = await fetch("/api/image-canvas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: promptText, ratio: requestRatio, style: editOverride ? "original" : style, model: modelForRequest, references }) });
-          if (!response.ok) {
-            const data = await response.json().catch(() => null);
-            throw new Error(data?.error || `生图请求失败（${response.status}），请重试。`);
-          }
-          const blob = await response.blob();
-          if (!blob.size || !blob.type.startsWith("image/")) throw new Error("生图服务没有返回有效图片，请重试。");
-          const imageId = localMode ? response.headers.get("x-canvas-image-id") : null;
-          return imageId ? `/api/image-canvas/output?id=${encodeURIComponent(imageId)}` : await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader(); reader.onload = () => resolve(String(reader.result));
-            reader.onerror = () => reject(new Error("生成成功，但图片无法读取。请重试。")); reader.readAsDataURL(blob);
-          });
-        },
-        onResult: (src, index) => {
-          const node: Item = { id: index === 0 && pending ? pending.id : crypto.randomUUID(), kind: "image", src, prompt: promptText, x: anchorX + (index % 2) * 370, y: anchorY + Math.floor(index / 2) * rowHeight, width: pending?.width ?? 330, from: targetId, pending: false, aspectRatio: cssRatio };
-          intentionallyEmpty.current = false;
-          setItems((all) => index === 0 && pending && all.some((item) => item.id === pending.id)
-            ? all.map((item) => item.id === pending.id ? { ...item, src, prompt: promptText, pending: false, aspectRatio: cssRatio } : item)
-            : [...all, node]);
-          setSelected(node.id); setSelectedIds([node.id]);
-        },
-      });
-      if (result.error) setMessage(`已生成 ${result.completed} / ${count} 张；${result.error} 后续生成已停止，已有图片保留。`);
-      else if (result.stopped) setMessage(`已停止后续生成，保留 ${result.completed} / ${count} 张图片。`);
-      else setMessage(`已生成 ${result.completed} 张图片并连入画布，可分别预览、下载或继续创作。`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "生成失败，请重试。"); }
-    finally { generationLock.current = false; setBusy(false); setBatchStopping(false); void refreshAccount(); }
+      const batchNodes: Item[] = [];
+      const addResult = (src: string, index: number) => {
+        const node: Item = { id: index === 0 && pending ? pending.id : crypto.randomUUID(), kind: "image", src, prompt: promptText, x: anchorX + (index % 2) * 370, y: anchorY + Math.floor(index / 2) * rowHeight, width: pending?.width ?? 330, from: targetId, pending: false, aspectRatio: cssRatio };
+        intentionallyEmpty.current = false;
+        batchNodes.push(node);
+        setItems((all) => index === 0 && pending && all.some((item) => item.id === pending.id)
+          ? all.map((item) => item.id === pending.id ? { ...item, src, prompt: promptText, pending: false, aspectRatio: cssRatio } : item)
+          : [...all, node]);
+        setSelected(node.id); setSelectedIds([node.id]);
+      };
+      setMessage(count > 1 ? `已提交一批 ${count} 张图片，同时生成中…` : "图片生成中…");
+      const response = await fetch("/api/image-canvas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: promptText, ratio: requestRatio, style: editOverride ? "original" : style, model: modelForRequest, references, count }) });
+      if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error || `生图请求失败（${response.status}）。`); }
+      if (count > 1) {
+        const result = await readImageBatch(response, count, {
+          onResult: (src, index) => { addResult(src, index); completedCount += 1; },
+          onProgress: (finished) => { setBatchProgress({ current: finished, total: count }); setMessage(`已返回 ${finished} / ${count} 张结果，其他图片仍在生成…`); },
+        });
+        setMessage(result.errors.length ? `已生成 ${result.completed} / ${count} 张；${result.errors.join("；")} 已成功图片保留。` : `已生成 ${count} 张图片并连入画布，可分别预览和下载。`);
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (rect && batchNodes.length) {
+          const left = Math.min(...batchNodes.map((node) => node.x)), top = Math.min(...batchNodes.map((node) => node.y));
+          const right = Math.max(...batchNodes.map((node) => node.x + node.width)), bottom = Math.max(...batchNodes.map((node) => node.y + rowHeight));
+          const zoom = clamp(Math.min((rect.width - 100) / (right - left), (rect.height - 140) / (bottom - top)), minZoom, 1);
+          setView({ zoom, x: (rect.width - (right - left) * zoom) / 2 - left * zoom, y: (rect.height - (bottom - top) * zoom) / 2 - top * zoom });
+        }
+      } else {
+        const blob = await response.blob();
+        if (!blob.size || !blob.type.startsWith("image/")) throw new Error("生图服务没有返回有效图片。");
+        const imageId = localMode ? response.headers.get("x-canvas-image-id") : null;
+        const src = imageId ? `/api/image-canvas/output?id=${encodeURIComponent(imageId)}` : await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("图片无法读取。")); reader.readAsDataURL(blob);
+        });
+        addResult(src, 0); completedCount = 1; setBatchProgress({ current: 1, total: 1 });
+        setMessage("已生成 1 张图片并连入画布。");
+      }
+    } catch (error) { setMessage(`已生成 ${completedCount} / ${count} 张；${error instanceof Error ? error.message : "生成失败，请重试。"} 已成功图片保留。`); }
+    finally { generationLock.current = false; setBusy(false); void refreshAccount(); }
   };
   const importImage = (file?: File) => {
     if (!file) return;
@@ -829,7 +831,7 @@ export default function Canvas() {
         <div className={styles.inspectorScroll}>
           <section className={styles.section}><div className={styles.sectionHeading}><span>01 / 画面描述</span><button onClick={() => addNode("prompt")}>＋ 新描述</button></div>
             {currentPromptNode?.sources?.length ? <p className={styles.referenceHint}>已连接 {currentPromptNode.sources.length} 张参考图。描述图1、图2各要保留的空间、建筑或风格，再点击生成。</p> : <p className={styles.referenceHint}>想按已有图片生成？把图片右侧圆点拖到描述节点左侧圆点；也可以把两张图片直接相连。</p>}
-            {currentPromptNode ? <><textarea className={styles.mainPrompt} value={activePrompt} placeholder="描述你想生成的画面…" onChange={(event) => setItems((all) => all.map((item) => item.id === currentPromptNode.id ? { ...item, prompt: event.target.value } : item))} /><div className={styles.settingRow}><label>画面比例<select value={ratio} onChange={(event) => { const nextRatio = event.target.value; setRatio(nextRatio); setItems((all) => all.map((item) => item.kind === "image" && item.pending && item.from === currentPromptNode.id ? { ...item, aspectRatio: nextRatio.replace(":", " / ") } : item)); }}><option value="16:9">16:9 横屏</option><option value="9:16">9:16 竖屏</option><option value="4:3">4:3 横屏</option><option value="3:4">3:4 竖屏</option><option value="1:1">1:1 方形</option><option value="3:2">3:2 横屏</option><option value="2:3">2:3 竖屏</option></select></label><label>生成张数<select aria-label="生成张数" value={imageCount} disabled={busy} onChange={(event) => setImageCount(Number(event.target.value) as ImageCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} 张</option>)}</select></label></div><p className={styles.usage}>一次生成 {imageCount} 张，依次完成。{localMode ? "使用本机模型。" : `每张分别计入额度，本次最多提交 ${imageCount} 次。`}</p><div className={styles.modelPicker}><span>生成模型 · 共用每日免费额度</span><div>{imageModels.map((model) => <button key={model.id} className={imageModel === model.id ? styles.activeModel : ""} onClick={() => setImageModel(model.id)}><strong>{imageModel === model.id ? "✓ " : ""}{model.name}</strong><small>{model.note}</small></button>)}<button className={styles.comingModel} disabled><strong>Nano Banana Pro</strong><small>敬请期待 · 专业空间重建</small></button><button className={styles.comingModel} disabled><strong>GPT Image</strong><small>敬请期待 · 精细图像编辑</small></button></div></div><div className={styles.styleChoices}><span>视觉方向</span><div><button className={style === "after" ? styles.activeStyle : ""} onClick={() => setStyle("after")}>实验视觉</button><button className={style === "photo" ? styles.activeStyle : ""} onClick={() => setStyle("photo")}>电影摄影</button><button className={style === "original" ? styles.activeStyle : ""} onClick={() => setStyle("original")}>原始描述</button></div></div><button className={styles.generateButton} disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? `正在生成 ${batchProgress.current} / ${batchProgress.total} 张…` : `生成 ${imageCount} 张 · ${imageModels.find((model) => model.id === imageModel)?.name ?? "免费模型"} ↗`}</button>{busy && batchProgress.total > 1 && <button className={styles.secondaryButton} disabled={batchStopping} onClick={() => { stopBatch.current = true; setBatchStopping(true); setMessage("当前图片完成后将停止，不再提交后续请求。"); }}>{batchStopping ? "等待当前图片完成…" : "停止后续生成"}</button>}<p className={styles.usage}>{localMode ? authMessage : user ? `今日剩余 ${quota?.remaining ?? "—"} / ${quota?.userLimit ?? "—"} 次` : authMessage}</p></> : <div className={styles.noPrompt}><p>画布还没有描述节点。</p><button onClick={() => addNode("prompt")}>添加描述节点</button></div>}
+            {currentPromptNode ? <><textarea className={styles.mainPrompt} value={activePrompt} placeholder="描述你想生成的画面…" onChange={(event) => setItems((all) => all.map((item) => item.id === currentPromptNode.id ? { ...item, prompt: event.target.value } : item))} /><div className={styles.settingRow}><label>画面比例<select value={ratio} onChange={(event) => { const nextRatio = event.target.value; setRatio(nextRatio); setItems((all) => all.map((item) => item.kind === "image" && item.pending && item.from === currentPromptNode.id ? { ...item, aspectRatio: nextRatio.replace(":", " / ") } : item)); }}><option value="16:9">16:9 横屏</option><option value="9:16">9:16 竖屏</option><option value="4:3">4:3 横屏</option><option value="3:4">3:4 竖屏</option><option value="1:1">1:1 方形</option><option value="3:2">3:2 横屏</option><option value="2:3">2:3 竖屏</option></select></label><label>生成张数<select aria-label="生成张数" value={imageCount} disabled={busy} onChange={(event) => setImageCount(Number(event.target.value) as ImageCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} 张</option>)}</select></label></div><p className={styles.usage}>一次提交 {imageCount} 张，云端同时生成。{localMode ? "本机模型按显存情况处理。" : `仅批次之间有一分钟冷却；每张分别计入额度，本次最多提交 ${imageCount} 次。`}</p><div className={styles.modelPicker}><span>生成模型 · 共用每日免费额度</span><div>{imageModels.map((model) => <button key={model.id} className={imageModel === model.id ? styles.activeModel : ""} onClick={() => setImageModel(model.id)}><strong>{imageModel === model.id ? "✓ " : ""}{model.name}</strong><small>{model.note}</small></button>)}<button className={styles.comingModel} disabled><strong>Nano Banana Pro</strong><small>敬请期待 · 专业空间重建</small></button><button className={styles.comingModel} disabled><strong>GPT Image</strong><small>敬请期待 · 精细图像编辑</small></button></div></div><div className={styles.styleChoices}><span>视觉方向</span><div><button className={style === "after" ? styles.activeStyle : ""} onClick={() => setStyle("after")}>实验视觉</button><button className={style === "photo" ? styles.activeStyle : ""} onClick={() => setStyle("photo")}>电影摄影</button><button className={style === "original" ? styles.activeStyle : ""} onClick={() => setStyle("original")}>原始描述</button></div></div><button className={styles.generateButton} disabled={busy || !activePrompt.trim() || !canGenerate} onClick={() => void generate()}>{busy ? `正在生成 ${batchProgress.current} / ${batchProgress.total} 张…` : `生成 ${imageCount} 张 · ${imageModels.find((model) => model.id === imageModel)?.name ?? "免费模型"} ↗`}</button><p className={styles.usage}>{localMode ? authMessage : user ? `今日剩余 ${quota?.remaining ?? "—"} / ${quota?.userLimit ?? "—"} 次` : authMessage}</p></> : <div className={styles.noPrompt}><p>画布还没有描述节点。</p><button onClick={() => addNode("prompt")}>添加描述节点</button></div>}
           </section>
           {current?.kind === "image" && <section className={styles.section}><div className={styles.sectionHeading}><span>02 / 图像节点</span><button className={styles.dangerAction} onClick={removeCurrent}>移除</button></div><p className={styles.selectedDescription}>{current.src ? current.prompt : current.pending ? "运行描述节点后，生成的图片会出现在这里。" : "可通过导入图片填充此节点。"}</p>{current.src && <><button className={styles.downloadButton} onClick={() => setToolbarMenu("upscale")}>免费高清放大　2× / 4× ↗</button><a className={styles.downloadButton} href={current.src} download={`after-now-${current.id}.png`}>下载原图 ↓</a></>}</section>}
           {!localMode && <details className={styles.account}><summary>{user ? `账号与额度 · ${user.email}` : "登录以启用生图"}</summary>{user ? <><p>今日剩余 {quota?.remaining ?? "—"} / {quota?.userLimit ?? "—"} 次</p><button className={styles.secondaryButton} disabled={busy || authBusy} onClick={() => accountAction("logout")}>退出登录</button></> : <form onSubmit={(event) => { event.preventDefault(); void accountAction("login"); }}><label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" minLength={8} maxLength={128} required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} /></label><div className={styles.authActions}><button className={styles.secondaryButton} disabled={authBusy} type="submit">{authBusy ? "请稍候…" : "登录"}</button><button className={styles.secondaryButton} disabled={authBusy || !email || loginPassword.length < 8} type="button" onClick={() => void accountAction("signup")}>注册</button></div><p role="status">{authMessage}</p></form>}<small>每日次数于北京时间 08:00 重置；提交给模型后会计入次数。</small></details>}

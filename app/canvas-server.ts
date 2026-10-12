@@ -25,10 +25,12 @@ export async function getCanvasUser() {
   return user.id && user.email_confirmed_at ? { id: String(user.id), email: String(user.email) } : null;
 }
 const dailyGenerationLimit = 100;
-export async function canvasQuota(userId: string, reserve = false) {
+export async function canvasQuota(userId: string, reserve = false, count = 1) {
   const config = authConfig();
   if (!config) throw new Error("NOT_CONFIGURED");
-  const response = await fetch(`${config.url}/rest/v1/rpc/canvas_quota`, { method: "POST", headers: { apikey: config.service, Authorization: `Bearer ${config.service}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_user: userId, p_reserve: reserve, p_user_limit: dailyGenerationLimit, p_global_limit: dailyGenerationLimit }), cache: "no-store", signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error("QUOTA_UNAVAILABLE");
-  return await response.json() as { allowed: boolean; reason: string; remaining: number; globalRemaining: number; userLimit: number; globalLimit: number; resetsAt: string };
+  if (!Number.isInteger(count) || count < 1 || count > 4) throw new Error("INVALID_BATCH_COUNT");
+  const batch = reserve && count > 1;
+  const response = await fetch(`${config.url}/rest/v1/rpc/${batch ? "canvas_quota_batch" : "canvas_quota"}`, { method: "POST", headers: { apikey: config.service, Authorization: `Bearer ${config.service}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_user: userId, ...(batch ? { p_count: count } : { p_reserve: reserve }), p_user_limit: dailyGenerationLimit, p_global_limit: dailyGenerationLimit }), cache: "no-store", signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error(batch ? "BATCH_QUOTA_UNAVAILABLE" : "QUOTA_UNAVAILABLE");
+  return await response.json() as { allowed: boolean; reason: string; reserved?: number; remaining: number; globalRemaining: number; userLimit: number; globalLimit: number; resetsAt: string };
 }
