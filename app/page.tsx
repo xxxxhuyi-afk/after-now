@@ -41,6 +41,13 @@ const projects = [
 
 const labNotes = [
   {
+    index: "L—08",
+    title: "PhotoCraft Editor",
+    subtitle: "图像编辑器",
+    copy: "在浏览器中编辑图层、文字与图像，并导出 PSD。",
+    english: "Edit layers, type, and images directly in your browser.",
+  },
+  {
     index: "L—07",
     title: "PPT Optimizer",
     subtitle: "PPT 优化工作台",
@@ -145,7 +152,7 @@ export default function Home() {
                 <span>{note.index}</span>
                 <span>Open study</span>
               </div>
-              <h3>{note.index === "L—07" ? <Link className={styles.labEntryLink} href="/lab/ppt">{note.title}</Link> : note.index === "L—06" ? <Link className={styles.labEntryLink} href="/lab/hejing">{note.title}</Link> : note.index === "L—05" ? <Link className={styles.labEntryLink} href="/lab/zaozao">{note.title}</Link> : note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
+              <h3>{note.index === "L—08" ? <Link className={styles.labEntryLink} href="/lab/editor">{note.title}</Link> : note.index === "L—07" ? <Link className={styles.labEntryLink} href="/lab/ppt">{note.title}</Link> : note.index === "L—06" ? <Link className={styles.labEntryLink} href="/lab/hejing">{note.title}</Link> : note.index === "L—05" ? <Link className={styles.labEntryLink} href="/lab/zaozao">{note.title}</Link> : note.index === "L—04" ? <Link className={styles.labEntryLink} href="/lab/image-canvas">{note.title}</Link> : note.index === "L—01" ? <Link className={styles.labEntryLink} href="/lab/generative-form">{note.title}</Link> : note.title}</h3>
               {note.subtitle && <h4 className={styles.labSubtitle}>{note.subtitle}</h4>}
               <p>{note.copy}</p>
               {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
