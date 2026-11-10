@@ -164,6 +164,8 @@ export default function Home() {
               <p>{note.copy}</p>
               {note.english && <p lang="en" className={styles.labEnglish}>{note.english}</p>}
               <span className={styles.labCardArrow}><Arrow diagonal /></span>
+              {note.index === "L—09" && <LabToolPreview tool="exhibitions" />}
+              {note.index === "L—08" && <LabToolPreview tool="editor" />}
               {note.index === "L—06" && <LabToolPreview tool="hejing" />}
               {note.index === "L—07" && <LabToolPreview tool="ppt" />}
               {note.index === "L—05" && <LabToolPreview />}
