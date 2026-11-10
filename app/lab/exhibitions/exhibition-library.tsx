@@ -103,6 +103,7 @@ export default function ExhibitionLibrary() {
       if (event.data?.type !== "after-now-library-route") return;
       const hash = event.data.hash;
       if (typeof hash !== "string" || !hash.startsWith("#") || hash.length > 2000) return;
+      setLoaded(true);
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
     };
     sync();
