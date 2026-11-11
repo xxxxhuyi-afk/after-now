@@ -28,7 +28,14 @@ async function serve(request){
   const authorized=await getSession();
   if(!authorized)return request.mode==='navigate'?Response.redirect(new URL('/lab/exhibitions',self.location.origin),302):new Response('Locked',{status:401,headers:{'Cache-Control':'no-store'}});
   let relative;try{relative=decodeURIComponent(new URL(request.url).pathname).slice('/exhibition-library/'.length)||'index.html';}catch{return new Response('Invalid path',{status:400});}
-  const index=await manifest(relative==='index.html'),file=index.files[relative];
+  let index=await manifest(relative==='index.html'),file=index.files[relative];
+  if(typeof file!=='string'){
+    // The worker may have started before a new batch was published, so its
+    // cached manifest does not know the new files yet. Refresh once and
+    // re-check before returning 404, so newly published images load
+    // without waiting for the worker to restart.
+    index=await manifest(true);file=index.files[relative];
+  }
   if(typeof file!=='string'||!/^([a-f0-9]{64})\.bin$/.test(file))return new Response('Not found',{status:404});
   const response=await fetch(BASE+file);if(!response.ok)return new Response('Asset unavailable',{status:502});
   const bytes=new Uint8Array(await response.arrayBuffer());
