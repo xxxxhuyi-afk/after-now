@@ -11,7 +11,7 @@ self.addEventListener('message', event => {
   }
   if(data?.type==='exhibition-lock'){session=null;event.ports[0]?.postMessage({ok:true});}
 });
-function manifest(){return manifestPromise||(manifestPromise=fetch(BASE+'manifest.json').then(r=>{if(!r.ok)throw new Error('Vault manifest unavailable');return r.json()}));}
+function manifest(refresh=false){if(refresh||!manifestPromise){manifestPromise=fetch(BASE+'manifest.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Vault manifest unavailable');return r.json()});}return manifestPromise;}
 async function getSession(){
   if(session&&session.expires>Date.now())return session;
   session=null;
@@ -28,7 +28,7 @@ async function serve(request){
   const authorized=await getSession();
   if(!authorized)return request.mode==='navigate'?Response.redirect(new URL('/lab/exhibitions',self.location.origin),302):new Response('Locked',{status:401,headers:{'Cache-Control':'no-store'}});
   let relative;try{relative=decodeURIComponent(new URL(request.url).pathname).slice('/exhibition-library/'.length)||'index.html';}catch{return new Response('Invalid path',{status:400});}
-  const index=await manifest(),file=index.files[relative];
+  const index=await manifest(relative==='index.html'),file=index.files[relative];
   if(typeof file!=='string'||!/^([a-f0-9]{64})\.bin$/.test(file))return new Response('Not found',{status:404});
   const response=await fetch(BASE+file);if(!response.ok)return new Response('Asset unavailable',{status:502});
   const bytes=new Uint8Array(await response.arrayBuffer());
