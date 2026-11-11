@@ -1,1 +1,2 @@
 /public/exhibition-vault/** -text
+/public/photocraft/photocraft-web-*.js text eol=lf

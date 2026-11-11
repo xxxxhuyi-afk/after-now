@@ -1389,6 +1389,7 @@
 .labCard > .labToolPreview[data-active="true"] { opacity: 1; transform: translateY(0); }
 @media (hover: none) { .labCard > .labToolPreview { opacity: 1; transform: none; } }
 .labToolViewport { position: relative; width: 100%; aspect-ratio: 1280 / 900; background: #171919; overflow: hidden; border-radius: 0.8rem; container-type: inline-size; }
+.labToolViewport img { object-fit: contain; }
 .labToolViewport iframe { border: 0; transform-origin: top left; transform: scale(calc(100cqw / 1280px)); pointer-events: none; }
 .labToolCaption { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem 0; }
 .labToolCaption strong { font-size: 1.25rem; font-weight: 400; }

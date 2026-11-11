@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import styles from "./page.module.css";
 
 const tools = {
+  exhibitions: { image: "/lab-previews/exhibitions.png", title: "展馆案例库", description: "案例图集、互动展项与五主题模型" },
+  editor: { image: "/lab-previews/editor.png", title: "PhotoCraft 图像编辑器", description: "图像、图层与 PSD 编辑" },
   ppt: { src: "/ppt/index.html", title: "PPT Optimizer", description: "内容与参考图 → 可编辑演示文稿" },
   zaozao: { src: "/zaozao/index.html", title: "小胡造造造", description: "文字与图像 → 立体模型" },
   canvas: { src: "/lab/image-canvas", title: "生图画布", description: "生成图像 · 自由排列 · 保存创作" },
@@ -45,9 +48,13 @@ export default function LabToolPreview({ tool = "zaozao" }: { tool?: keyof typeo
   return (
     <div ref={ref} className={styles.labToolPreview} data-active={active} aria-hidden="true">
       <div className={styles.labToolViewport}>
-        <iframe src={preview.src} loading="lazy" title={`${preview.title}界面预览`} tabIndex={-1}
-          sandbox="allow-scripts allow-same-origin"
-          style={{ width: 1280, height: 900 }} />
+        {"image" in preview ? (
+          <Image src={preview.image} alt="" fill sizes="(max-width: 900px) 100vw, 33vw" />
+        ) : (
+          <iframe src={preview.src} loading="lazy" title={`${preview.title}界面预览`} tabIndex={-1}
+            sandbox="allow-scripts allow-same-origin"
+            style={{ width: 1280, height: 900 }} />
+        )}
       </div>
       <div className={styles.labToolCaption}>
         <strong>{preview.title}</strong>
