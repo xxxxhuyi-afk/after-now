@@ -2,6 +2,7 @@ import ArchiveMarquee from "./archive-marquee";
 import CharacterIntro from "./character-intro";
 import Experience from "./experience";
 import WelcomeHero from "./welcome-hero";
+import TodayStrip from "./today-strip";
 import LabToolPreview from "./lab-tool-preview";
 import ProjectSpotlight from "./project-spotlight";
 import ProjectRedArchive from "./project-red-archive";
@@ -130,6 +131,7 @@ function Arrow({ diagonal = false }: { diagonal?: boolean }) {
 export default function Home() {
   return (
     <main className={styles.page}>
+      <TodayStrip />
       <Experience />
       <WelcomeHero />
 

@@ -1,0 +1,105 @@
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-height: 2.75rem;
+  padding: 0.45rem var(--edge, clamp(1.25rem, 4vw, 4.5rem));
+  background: var(--ink);
+  color: var(--bone);
+  border-bottom: 1px solid color-mix(in srgb, var(--bone) 18%, transparent);
+  font-size: 0.83rem;
+  line-height: 1.4;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--acid);
+  flex: none;
+}
+
+.date {
+  color: color-mix(in srgb, var(--bone) 55%, transparent);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.tag {
+  flex: none;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--acid) 65%, transparent);
+  border-radius: 999px;
+  color: var(--acid);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--bone);
+  text-decoration: none;
+  animation: stripFade 0.45s ease;
+}
+
+.title:hover,
+.title:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+.more {
+  flex: none;
+  color: color-mix(in srgb, var(--bone) 70%, transparent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.more:hover,
+.more:focus-visible {
+  color: var(--acid);
+}
+
+@keyframes stripFade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .strip {
+    gap: 0.6rem;
+    font-size: 0.8rem;
+  }
+  .date {
+    display: none;
+  }
+  .more {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title {
+    animation: none;
+  }
+}
